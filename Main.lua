@@ -1,12 +1,3 @@
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Workspace = game:GetService("Workspace")
-local TeleportService = game:GetService("TeleportService")
-
-local LocalPlayer = Players.LocalPlayer
-local Camera = Workspace.CurrentCamera
-
 _G.Settings = _G.Settings or {
     Tracers = {Enabled = false, OnlyEnemies = true, FOV = 160, Thickness = 2, Transparency = 0.8, Color = Color3.fromRGB(255,255,255)},
     Aimbot = {Enabled = false, FOV = 120, Smoothing = 3, Prediction = 0.12, HitboxOffset = 2.5, Sensitivity = 1.2, WallCheck = true, Silent = false},
@@ -29,7 +20,11 @@ _G.Settings = _G.Settings or {
     }
 }
 
-local baseUrl = "https://raw.githubusercontent.com/oleg6785999-lang/MyPrivateAbyss/main/"
+_G.Players = game:GetService("Players")
+_G.Camera = workspace.CurrentCamera
+_G.LocalPlayer = _G.Players.LocalPlayer
+
+local baseUrl = "https://raw.githubusercontent.com/ВАШ_НИК/AbyssArchon/main/"
 
 local function LoadModule(name)
     local success, result = pcall(function()
