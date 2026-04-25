@@ -1,162 +1,152 @@
-local Players = _G.Players or game:GetService("Players")
-local Camera = _G.Camera or workspace.CurrentCamera
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
-local drawingAvailable = type(Drawing) == "table" and type(Drawing.new) == "function"
+local flyAttachment = nil
+local flyLinearVelocity = nil
+local flyAlignOrientation = nil
+local lastJumpTime = 0
+local originalCanCollide = {}
+local flyEnabledLast = false
 
-local DrawingPool = table.create(300)
-local function GetDrawing(class)
-    for _, obj in ipairs(DrawingPool) do
-        if obj.ClassName == class and not obj.Visible then
-            return obj
+local function ToggleFly(enable)
+    local char = _G.LocalPlayer.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    if enable then
+        if not flyAttachment then
+            flyAttachment = Instance.new("Attachment")
+            flyAttachment.Name = "ABYSS_FlyAttachment"
+            flyAttachment.Parent = root
+
+            flyLinearVelocity = Instance.new("LinearVelocity")
+            flyLinearVelocity.Name = "ABYSS_FlyVelocity"
+            flyLinearVelocity.Attachment0 = flyAttachment
+            flyLinearVelocity.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+            flyLinearVelocity.MaxForce = math.huge
+            flyLinearVelocity.Parent = root
+
+            flyAlignOrientation = Instance.new("AlignOrientation")
+            flyAlignOrientation.Name = "ABYSS_FlyAlign"
+            flyAlignOrientation.Attachment0 = flyAttachment
+            flyAlignOrientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
+            flyAlignOrientation.MaxTorque = math.huge
+            flyAlignOrientation.RigidityEnabled = true
+            flyAlignOrientation.Parent = root
+
+            root.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
         end
-    end
-    local d = Drawing.new(class)
-    table.insert(DrawingPool, d)
-    return d
-end
-
-local Highlights = {}
-local espBoxes = {}
-local espHealthBars = {}
-local espSnaplines = {}
-
-local rayParams = RaycastParams.new()
-rayParams.FilterType = Enum.RaycastFilterType.Exclude
-
-local function IsEnemy(player)
-    if not _G.Settings.ESP.OnlyEnemies then return true end
-    if not player.Team or not _G.LocalPlayer.Team then return true end
-    return player.Team ~= _G.LocalPlayer.Team
-end
-
-local function IsVisible(targetPosition)
-    if not _G.LocalPlayer.Character then return false end
-    rayParams.FilterDescendantsInstances = {_G.LocalPlayer.Character}
-    local origin = Camera.CFrame.Position
-    local direction = targetPosition - origin
-    return not workspace:Raycast(origin, direction, rayParams)
-end
-
-local function CleanupESP()
-    for plr, box in pairs(espBoxes) do if box then box:Remove() end end
-    for plr, bars in pairs(espHealthBars) do 
-        if bars then 
-            if bars.bg then bars.bg:Remove() end 
-            if bars.fill then bars.fill:Remove() end 
-        end 
-    end
-    for plr, line in pairs(espSnaplines) do if line then line:Remove() end end
-    for plr, hl in pairs(Highlights) do if hl then hl:Destroy() end end
-    table.clear(espBoxes)
-    table.clear(espHealthBars)
-    table.clear(espSnaplines)
-    table.clear(Highlights)
-end
-
-local function UpdateChams(plr, char)
-    if _G.Settings.ESP.Chams then
-        if not Highlights[plr] then
-            local hl = Instance.new("Highlight")
-            hl.Name = "ABYSS_Highlight"
-            hl.FillColor = Color3.fromRGB(255,0,0)
-            hl.OutlineColor = Color3.fromRGB(255,255,255)
-            hl.FillTransparency = 0.5
-            hl.Adornee = char
-            hl.Parent = char
-            Highlights[plr] = hl
-        end
-    elseif Highlights[plr] then
-        Highlights[plr]:Destroy()
-        Highlights[plr] = nil
+    else
+        if flyLinearVelocity then flyLinearVelocity:Destroy() flyLinearVelocity = nil end
+        if flyAlignOrientation then flyAlignOrientation:Destroy() flyAlignOrientation = nil end
+        if flyAttachment then flyAttachment:Destroy() flyAttachment = nil end
     end
 end
 
-game:GetService("RunService").RenderStepped:Connect(function()
-    if not _G.Settings.ESP.Enabled or not drawingAvailable then
-        if next(espBoxes) or next(espHealthBars) or next(espSnaplines) or next(Highlights) then
-            CleanupESP()
-        end
-        return
-    end
-
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr == _G.LocalPlayer or not plr.Character then continue end
-        if _G.Settings.ESP.OnlyEnemies and not IsEnemy(plr) then continue end
-
-        local char = plr.Character
-        local root = char:FindFirstChild("HumanoidRootPart")
-        local hum = char:FindFirstChild("Humanoid")
-        if not root or not hum or hum.Health <= 0 then continue end
-
-        local dist = (root.Position - Camera.CFrame.Position).Magnitude
-        if dist > _G.Settings.ESP.MaxDistance then continue end
-
-        local headPos = root.Position + Vector3.new(0, 2.5, 0)
-        local legPos = root.Position - Vector3.new(0, 2.5, 0)
-        local headScreen, visHead = Camera:WorldToViewportPoint(headPos)
-        local legScreen, visLeg = Camera:WorldToViewportPoint(legPos)
-        if not (visHead and visLeg) then continue end
-
-        local height = math.abs(legScreen.Y - headScreen.Y)
-        local width = height * 0.5
-        local x = headScreen.X - width / 2
-        local y = headScreen.Y
-
-        if _G.Settings.ESP.Boxes then
-            if not espBoxes[plr] then espBoxes[plr] = GetDrawing("Square") end
-            local box = espBoxes[plr]
-            box.Filled = false
-            box.Color = Color3.fromRGB(255,255,255)
-            box.Thickness = 1
-            box.Size = Vector2.new(width, height)
-            box.Position = Vector2.new(x, y)
-            box.Visible = true
-        end
-
-        if _G.Settings.ESP.HealthBar then
-            local healthPercent = hum.Health / hum.MaxHealth
-            if not espHealthBars[plr] then
-                local bg = GetDrawing("Square")
-                local fill = GetDrawing("Square")
-                bg.Filled = true
-                bg.Color = Color3.fromRGB(0,0,0)
-                fill.Filled = true
-                fill.Color = Color3.fromRGB(0,255,0)
-                espHealthBars[plr] = {bg = bg, fill = fill}
+local function ToggleNoClip(enable)
+    local char = _G.LocalPlayer.Character
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            if enable then
+                if originalCanCollide[part] == nil then
+                    originalCanCollide[part] = part.CanCollide
+                end
+                part.CanCollide = false
+            else
+                if originalCanCollide[part] ~= nil then
+                    part.CanCollide = originalCanCollide[part]
+                end
             end
-            local bars = espHealthBars[plr]
-            bars.bg.Size = Vector2.new(3, height)
-            bars.bg.Position = Vector2.new(x - 5, y)
-            bars.bg.Visible = true
-            local barHeight = height * healthPercent
-            bars.fill.Size = Vector2.new(3, barHeight)
-            bars.fill.Position = Vector2.new(x - 5, y + (height - barHeight))
-            bars.fill.Visible = true
         end
-
-        if _G.Settings.ESP.Snaplines then
-            if not espSnaplines[plr] then espSnaplines[plr] = GetDrawing("Line") end
-            local line = espSnaplines[plr]
-            line.Color = Color3.fromRGB(255,255,255)
-            line.Thickness = 1
-            line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-            line.To = Vector2.new(headScreen.X, headScreen.Y)
-            line.Visible = true
-        end
-
-        UpdateChams(plr, char)
     end
+end
 
-    for plr in pairs(espBoxes) do
-        if not plr.Character or not plr.Character:FindFirstChild("Humanoid") or plr.Character.Humanoid.Health <= 0 then
-            if espBoxes[plr] then espBoxes[plr]:Remove() espBoxes[plr] = nil end
-            if espHealthBars[plr] then
-                if espHealthBars[plr].bg then espHealthBars[plr].bg:Remove() end
-                if espHealthBars[plr].fill then espHealthBars[plr].fill:Remove() end
-                espHealthBars[plr] = nil
+local function ResetHitboxes()
+    for _, plr in ipairs(_G.Players:GetPlayers()) do
+        if plr ~= _G.LocalPlayer and plr.Character then
+            for _, part in ipairs(plr.Character:GetChildren()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    part.Size = Vector3.new(2, 2, 1)
+                    part.Transparency = 0
+                end
             end
-            if espSnaplines[plr] then espSnaplines[plr]:Remove() espSnaplines[plr] = nil end
-            if Highlights[plr] then Highlights[plr]:Destroy() Highlights[plr] = nil end
         end
     end
+end
+
+local function UpdateHitbox()
+    if not _G.Settings.HitboxExpander.Enabled then 
+        ResetHitboxes()
+        return 
+    end
+    local size = _G.Settings.HitboxExpander.Size or 12
+    for _, plr in ipairs(_G.Players:GetPlayers()) do
+        if plr ~= _G.LocalPlayer and plr.Character then
+            for _, part in ipairs(plr.Character:GetChildren()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    if part.Size.X ~= size then
+                        part.Size = Vector3.new(size, size, size)
+                        part.Transparency = 0.7
+                    end
+                end
+            end
+        end
+    end
+end
+
+_G.Players.PlayerAdded:Connect(function(plr)
+    plr.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        ToggleNoClip(_G.Settings.NoClip)
+        UpdateHitbox()
+    end)
+end)
+
+RunService.Heartbeat:Connect(function()
+    local char = _G.LocalPlayer.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChild("Humanoid")
+    if not root or not hum then return end
+
+    if _G.Settings.Fly.Enabled ~= flyEnabledLast then
+        ToggleFly(_G.Settings.Fly.Enabled)
+        flyEnabledLast = _G.Settings.Fly.Enabled
+    end
+
+    if _G.Settings.Fly.Enabled and flyLinearVelocity then
+        local move = Vector3.new()
+        local camLook = _G.Camera.CFrame.LookVector
+        local camRight = _G.Camera.CFrame.RightVector
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += camLook end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= camLook end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= camRight end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += camRight end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.new(0,1,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.new(0,1,0) end
+
+        local speed = _G.Settings.Fly.Speed or 70
+        flyLinearVelocity.VectorVelocity = move.Magnitude > 0 and move.Unit * speed or Vector3.new()
+        flyAlignOrientation.CFrame = _G.Camera.CFrame
+    end
+
+    if _G.Settings.SpeedHack.Enabled then
+        hum.WalkSpeed = _G.Settings.SpeedHack.Speed or 50
+        if root.AssemblyLinearVelocity then
+            local vel = root.AssemblyLinearVelocity
+            root.AssemblyLinearVelocity = Vector3.new(vel.X, vel.Y, vel.Z)
+        end
+    else
+        hum.WalkSpeed = 16
+    end
+
+    if _G.Settings.InfJump and UserInputService:IsKeyDown(Enum.KeyCode.Space) and tick() - lastJumpTime > (0.18 + math.random() * 0.1) then
+        hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        lastJumpTime = tick()
+    end
+
+    ToggleNoClip(_G.Settings.NoClip)
+    UpdateHitbox()
 end)
