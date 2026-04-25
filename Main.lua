@@ -10,11 +10,17 @@ local Camera = Workspace.CurrentCamera
 local drawingAvailable = type(Drawing) == "table" and type(Drawing.new) == "function"
 
 local Rayfield = nil
-local urls = {"https://sirius.menu/rayfield", "https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"}
+local urls = {
+    "https://sirius.menu/rayfield",
+    "https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua",
+    "https://raw.githubusercontent.com/Janixx/Rayfield/main/source.lua"
+}
 
 local function LoadRayfield()
     for _, url in ipairs(urls) do
-        local success, result = pcall(function() return loadstring(game:HttpGet(url))() end)
+        local success, result = pcall(function()
+            return loadstring(game:HttpGet(url, true))()
+        end)
         if success and typeof(result) == "table" and result.CreateWindow then
             Rayfield = result
             return true
@@ -134,7 +140,7 @@ local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local method = getnamecallmethod()
     local args = {...}
-    if Settings.Aimbot.Silent and method == "FireServer" and self.Name:find("Bullet") or self.Name:find("Shoot") or self.Name:find("Gun") then
+    if Settings.Aimbot.Silent and method == "FireServer" and (self.Name:find("Bullet") or self.Name:find("Shoot") or self.Name:find("Gun") or self.Name:find("Fire")) then
         local closest = nil
         local shortest = math.huge
         for _, plr in ipairs(allPlayers) do
@@ -577,7 +583,7 @@ LocalPlayer.CharacterRemoving:Connect(function()
 end)
 
 if Rayfield then
-    local Window = Rayfield:CreateWindow({Name = "ABYSS ARCHON • UNIVERSAL 2026", LoadingTitle = "ABYSS ARCHON v1003.420", LoadingSubtitle = "Xeno Edition", Theme = "DarkBlue", ToggleUIKeybind = Enum.KeyCode.RightShift, ConfigurationSaving = {Enabled = true, FolderName = "AbyssUniversal", FileName = "Config"}})
+    local Window = Rayfield:CreateWindow({Name = "ABYSS ARCHON • UNIVERSAL 2026", LoadingTitle = "ABYSS ARCHON v1004.420", LoadingSubtitle = "Xeno Edition", Theme = "DarkBlue", ToggleUIKeybind = Enum.KeyCode.RightShift, ConfigurationSaving = {Enabled = true, FolderName = "AbyssUniversal", FileName = "Config"}})
 
     local Tab_Combat = Window:CreateTab("Бой", "crosshair")
     Tab_Combat:CreateSection("Аимбот")
@@ -660,7 +666,7 @@ if Rayfield then
     Tab_Movement:CreateToggle({Name = "Blatant Teleport (T)", CurrentValue = false, Callback = function(v) Settings.TeleportEnabled = v end})
 
     Rayfield:LoadConfiguration()
-    Rayfield:Notify({Title = "ABYSS ARCHON", Content = "v1003.420 ЗАГРУЖЕН | CLEAN + SILENT AIM + FAKE LAG + MOTOR6D | ПРОФЕССИОНАЛЬНЫЙ УРОВЕНЬ | ГОТОВ К АННИГИЛЯЦИИ", Duration = 8})
+    Rayfield:Notify({Title = "ABYSS ARCHON", Content = "v1004.420 ЗАГРУЖЕН | Rayfield FIXED | SILENT AIM + FAKE LAG + MOTOR6D | ГОТОВ К АННИГИЛЯЦИИ", Duration = 8})
 end
 
-print("ABYSS ARCHON v1003.420 — ETERNAL VOID LOCKDOWN AWAKENED")
+print("ABYSS ARCHON v1004.420 — ETERNAL VOID LOCKDOWN AWAKENED")
