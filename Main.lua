@@ -29,8 +29,8 @@ local baseUrl = "https://raw.githubusercontent.com/oleg6785999-lang/MyPrivateAby
 
 local function SafeLoad(name)
     for i = 1, 6 do
-        local success, err = pcall(function()
-            return loadstring(game:HttpGet(baseUrl .. name .. ".lua"))()
+        local success = pcall(function()
+            loadstring(game:HttpGet(baseUrl .. name .. ".lua"))()
         end)
         if success then 
             print("[ABYSS] " .. name .. " loaded")
@@ -41,6 +41,11 @@ local function SafeLoad(name)
     warn("[ABYSS] FAILED TO LOAD " .. name)
     return false
 end
+
+SafeLoad("Aimbot")
+SafeLoad("Visuals")
+SafeLoad("Movement")
+SafeLoad("AntiAim")
 
 local Rayfield = nil
 local urls = {"https://sirius.menu/rayfield", "https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"}
@@ -135,10 +140,5 @@ if Rayfield then
     Rayfield:LoadConfiguration()
     Rayfield:Notify({Title = "ABYSS ARCHON", Content = "MODULAR v1005.420 LOADED | READY FOR ANNIHILATION", Duration = 8})
 end
-
-SafeLoad("Aimbot")
-SafeLoad("Visuals")
-SafeLoad("Movement")
-SafeLoad("AntiAim")
 
 print("ABYSS ARCHON MODULAR LOADER v1005.420 — AWAKENED")
