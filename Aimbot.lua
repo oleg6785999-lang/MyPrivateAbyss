@@ -56,7 +56,7 @@ local function AimbotLoop()
             if mouseMoverExists then
                 local dx = (closest.X - mousePos.X) / _G.Settings.Aimbot.Smoothing
                 local dy = (closest.Y - mousePos.Y) / _G.Settings.Aimbot.Smoothing
-                mousemoverel(dx * _G.Settings.Aimbot.Sensitivity, dy * _G.Settings.Aimbot.Sensitivity)
+                mousemoverel(dx * (_G.Settings.Aimbot.Sensitivity or 1), dy * (_G.Settings.Aimbot.Sensitivity or 1))
             end
         end
     end
