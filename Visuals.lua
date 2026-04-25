@@ -1,16 +1,35 @@
 -- Visuals.lua
-local RunService = game:GetService("RunService")
+local Players = _G.Players or game:GetService("Players")
+local Camera = _G.Camera or workspace.CurrentCamera
+
+local drawingAvailable = type(Drawing) == "table" and type(Drawing.new) == "function"
 
 local TracersTable = {}
 local espBoxes = {}
 local espHealthBars = {}
 local espSnaplines = {}
 
+local function IsEnemy(player)
+    if not _G.Settings.ESP.OnlyEnemies then return true end
+    if not player.Team or not game.Players.LocalPlayer.Team then return true end
+    return player.Team ~= game.Players.LocalPlayer.Team
+end
+
+local function IsVisible(targetPosition)
+    if not _G.LocalPlayer.Character then return false end
+    local origin = Camera.CFrame.Position
+    local direction = targetPosition - origin
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = {_G.LocalPlayer.Character}
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    return not Workspace:Raycast(origin, direction, params)
+end
+
 local function VisualsLoop()
     while task.wait(0.016) do
         if not _G.Settings.ESP.Enabled or not drawingAvailable then continue end
         for _, plr in ipairs(Players:GetPlayers()) do
-            if plr == LocalPlayer or not plr.Character then continue end
+            if plr == _G.LocalPlayer or not plr.Character then continue end
             if _G.Settings.ESP.OnlyEnemies and not IsEnemy(plr) then continue end
             local root = plr.Character:FindFirstChild("HumanoidRootPart")
             local hum = plr.Character:FindFirstChild("Humanoid")
