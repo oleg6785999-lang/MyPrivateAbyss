@@ -5,15 +5,11 @@ local UserInputService = game:GetService("UserInputService")
 local isAiming = false
 
 UserInputService.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton2 then
-        isAiming = true
-    end
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then isAiming = true end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton2 then
-        isAiming = false
-    end
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then isAiming = false end
 end)
 
 local rayParams = RaycastParams.new()
@@ -33,7 +29,12 @@ local function IsVisible(targetPosition)
     return not workspace:Raycast(origin, direction, rayParams)
 end
 
+local lastTarget = nil
+local lastUpdate = 0
+
 local function GetClosest()
+    if tick() - lastUpdate < 0.03 then return lastTarget end
+    lastUpdate = tick()
     local closest = nil
     local shortest = _G.Settings.Aimbot.FOV or 120
     local mousePos = UserInputService:GetMouseLocation()
@@ -60,6 +61,7 @@ local function GetClosest()
             end
         end
     end
+    lastTarget = closest
     return closest
 end
 
@@ -70,10 +72,11 @@ mt.__namecall = newcclosure(function(self, ...)
     local args = {...}
     local method = getnamecallmethod()
     if _G.Settings.Aimbot.Silent and method == "FireServer" then
-        if self.Name:lower():find("shoot") or self.Name:lower():find("attack") or self.Name:lower():find("bullet") or self.Name:lower():find("remote") then
+        local name = self.Name:lower()
+        if name:find("shoot") or name:find("bullet") or name:find("damage") or name:find("attack") or name:find("fire") then
             local target = GetClosest()
             if target then
-                args[1] = target.Position + Vector3.new(math.random(-0.3,0.3), math.random(-0.1,0.1), math.random(-0.3,0.3))
+                args[1] = target.Position + Vector3.new(math.random(-0.15,0.15), math.random(-0.08,0.08), math.random(-0.15,0.15))
             end
         end
     end
