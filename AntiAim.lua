@@ -7,9 +7,9 @@ local originalNeckC0 = nil
 local fakeLagCounter = 0
 
 local function UpdateAntiAim()
-    local char = cachedCharacter
+    local char = _G.LocalPlayer.Character
     if not char then return end
-    local root = cachedRoot
+    local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return end
 
     if _G.Settings.AntiAim.HideHead then
