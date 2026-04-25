@@ -7,7 +7,7 @@ local flyAttachment, flyLinearVelocity, flyAlignOrientation = nil, nil, nil
 local function MovementLoop()
     while task.wait() do
         if _G.Settings.Fly.Enabled then
-            local root = cachedRoot
+            local root = _G.LocalPlayer.Character and _G.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             if root then
                 if not flyAttachment then
                     flyAttachment = Instance.new("Attachment")
@@ -25,8 +25,8 @@ local function MovementLoop()
                     flyAlignOrientation.Parent = root
                 end
                 local move = Vector3.new()
-                local camLook = Camera.CFrame.LookVector
-                local camRight = Camera.CFrame.RightVector
+                local camLook = _G.Camera.CFrame.LookVector
+                local camRight = _G.Camera.CFrame.RightVector
                 if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += camLook end
                 if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= camLook end
                 if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= camRight end
@@ -34,7 +34,7 @@ local function MovementLoop()
                 if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.new(0,1,0) end
                 if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.new(0,1,0) end
                 if flyLinearVelocity then flyLinearVelocity.VectorVelocity = move.Unit * _G.Settings.Fly.Speed end
-                if flyAlignOrientation then flyAlignOrientation.CFrame = Camera.CFrame end
+                if flyAlignOrientation then flyAlignOrientation.CFrame = _G.Camera.CFrame end
             end
         else
             if flyLinearVelocity then flyLinearVelocity:Destroy() flyLinearVelocity = nil end
@@ -42,21 +42,21 @@ local function MovementLoop()
             if flyAttachment then flyAttachment:Destroy() flyAttachment = nil end
         end
 
-        if _G.Settings.SpeedHack.Enabled and cachedCharacter then
-            local hum = cachedCharacter:FindFirstChild("Humanoid")
+        if _G.Settings.SpeedHack.Enabled and _G.LocalPlayer.Character then
+            local hum = _G.LocalPlayer.Character:FindFirstChild("Humanoid")
             if hum then hum.WalkSpeed = _G.Settings.SpeedHack.Speed end
         end
 
-        if _G.Settings.InfJump and cachedCharacter then
-            local hum = cachedCharacter:FindFirstChild("Humanoid")
+        if _G.Settings.InfJump and _G.LocalPlayer.Character then
+            local hum = _G.LocalPlayer.Character:FindFirstChild("Humanoid")
             if hum and UserInputService:IsKeyDown(Enum.KeyCode.Space) and tick() - lastJumpTime > 0.25 then
                 hum:ChangeState(Enum.HumanoidStateType.Jumping)
                 lastJumpTime = tick()
             end
         end
 
-        if _G.Settings.NoClip and cachedCharacter then
-            for _, part in ipairs(cachedCharacter:GetDescendants()) do
+        if _G.Settings.NoClip and _G.LocalPlayer.Character then
+            for _, part in ipairs(_G.LocalPlayer.Character:GetDescendants()) do
                 if part:IsA("BasePart") then part.CanCollide = false end
             end
         end
