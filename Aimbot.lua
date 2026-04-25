@@ -15,8 +15,8 @@ end)
 
 local function IsEnemy(player)
     if not _G.Settings.ESP.OnlyEnemies then return true end
-    if not player.Team or not game.Players.LocalPlayer.Team then return true end
-    return player.Team ~= game.Players.LocalPlayer.Team
+    if not player.Team or not _G.LocalPlayer.Team then return true end
+    return player.Team ~= _G.LocalPlayer.Team
 end
 
 local function IsVisible(targetPosition)
