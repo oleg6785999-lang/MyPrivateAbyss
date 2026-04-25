@@ -70,6 +70,10 @@ local function UpdateAntiAim()
         end
     end
 
+    if _G.Settings.Rage.Spinbot then
+        root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(_G.Settings.Rage.SpinSpeed or 25), 0)
+    end
+
     if _G.Settings.AntiAim.Desync ~= wasDesyncEnabled then
         wasDesyncEnabled = _G.Settings.AntiAim.Desync
         SetupDesync(_G.Settings.AntiAim.Desync)
