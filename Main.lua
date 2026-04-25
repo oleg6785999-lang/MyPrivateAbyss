@@ -1,5 +1,4 @@
 _G.Settings = _G.Settings or {
-    Tracers = {Enabled = false, OnlyEnemies = true, FOV = 160, Thickness = 2, Transparency = 0.8, Color = Color3.fromRGB(255,255,255)},
     Aimbot = {Enabled = false, FOV = 120, Smoothing = 3, Prediction = 0.12, HitboxOffset = 2.5, Sensitivity = 1.2, WallCheck = true, Silent = false},
     Rage = {Spinbot = false, SpinSpeed = 25},
     SpeedHack = {Enabled = false, Speed = 50},
@@ -7,10 +6,6 @@ _G.Settings = _G.Settings or {
     InfJump = false,
     NoClip = false,
     HitboxExpander = {Enabled = false, Size = 12},
-    Triggerbot = false,
-    Aura = {Enabled = false, Radius = 50, Damage = 100, Delay = 0.2},
-    TeleportEnabled = false,
-    RapidFire = false,
     ESP = {Enabled = false, Boxes = false, HealthBar = false, Snaplines = false, OnlyEnemies = true, MaxDistance = 500, Chams = false},
     AntiAim = {
         Jitter = false, JitterAngle = 40,
@@ -84,13 +79,10 @@ if Rayfield then
     Tab_Combat:CreateSection("Аимбот")
     Tab_Combat:CreateToggle({Name = "Аимбот (ПКМ)", CurrentValue = false, Callback = function(v) _G.Settings.Aimbot.Enabled = v end})
     Tab_Combat:CreateToggle({Name = "Silent Aim", CurrentValue = false, Callback = function(v) _G.Settings.Aimbot.Silent = v end})
-    Tab_Combat:CreateToggle({Name = "Triggerbot", CurrentValue = false, Callback = function(v) _G.Settings.Triggerbot = v end})
     Tab_Combat:CreateSlider({Name = "Aimbot FOV", Range = {10,600}, Increment = 10, CurrentValue = 120, Callback = function(v) _G.Settings.Aimbot.FOV = v end})
     Tab_Combat:CreateSlider({Name = "Smoothing", Range = {1,20}, Increment = 1, CurrentValue = 3, Callback = function(v) _G.Settings.Aimbot.Smoothing = v end})
 
     local Tab_Visuals = Window:CreateTab("Визуал", "eye")
-    Tab_Visuals:CreateSection("Трассеры")
-    Tab_Visuals:CreateToggle({Name = "Трассеры", CurrentValue = false, Callback = function(v) _G.Settings.Tracers.Enabled = v end})
     Tab_Visuals:CreateSection("ESP")
     Tab_Visuals:CreateToggle({Name = "ESP Enabled", CurrentValue = false, Callback = function(v) _G.Settings.ESP.Enabled = v end})
     Tab_Visuals:CreateToggle({Name = "Box ESP", CurrentValue = false, Callback = function(v) _G.Settings.ESP.Boxes = v end})
@@ -101,10 +93,6 @@ if Rayfield then
     local Tab_Rage = Window:CreateTab("Rage", "sword")
     Tab_Rage:CreateSection("Rage Mode")
     Tab_Rage:CreateToggle({Name = "Spinbot", CurrentValue = false, Callback = function(v) _G.Settings.Rage.Spinbot = v end})
-    Tab_Rage:CreateSection("Kill Aura")
-    Tab_Rage:CreateToggle({Name = "Kill Aura", CurrentValue = false, Callback = function(v) _G.Settings.Aura.Enabled = v end})
-    Tab_Rage:CreateSection("Дополнительный Rage")
-    Tab_Rage:CreateToggle({Name = "Rapid Fire", CurrentValue = false, Callback = function(v) _G.Settings.RapidFire = v end})
 
     local Tab_AntiAim = Window:CreateTab("Anti-Aim", "shield")
     Tab_AntiAim:CreateSection("Anti-Aim")
@@ -135,8 +123,8 @@ if Rayfield then
     Tab_Movement:CreateToggle({Name = "Hitbox Expander", CurrentValue = false, Callback = function(v) _G.Settings.HitboxExpander.Enabled = v end})
     Tab_Movement:CreateToggle({Name = "Fly (X)", CurrentValue = false, Callback = function(v) _G.Settings.Fly.Enabled = v end})
     Tab_Movement:CreateSlider({Name = "Fly Speed", Range = {30,150}, Increment = 5, CurrentValue = 70, Callback = function(v) _G.Settings.Fly.Speed = v end})
-    Tab_Movement:CreateToggle({Name = "Blatant Teleport (T)", CurrentValue = false, Callback = function(v) _G.Settings.TeleportEnabled = v end})
 
+    task.wait(0.5)
     Rayfield:LoadConfiguration()
     Rayfield:Notify({Title = "ABYSS ARCHON", Content = "MODULAR v1005.420 LOADED | READY FOR ANNIHILATION", Duration = 8})
 end
