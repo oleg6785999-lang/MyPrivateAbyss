@@ -38,15 +38,15 @@ local function IsVisible(targetPosition)
 end
 
 local function CleanupESP()
-    for _, box in pairs(espBoxes) do if box then box:Remove() end end
-    for _, bars in pairs(espHealthBars) do 
+    for plr, box in pairs(espBoxes) do if box then box:Remove() end end
+    for plr, bars in pairs(espHealthBars) do 
         if bars then 
             if bars.bg then bars.bg:Remove() end 
             if bars.fill then bars.fill:Remove() end 
         end 
     end
-    for _, line in pairs(espSnaplines) do if line then line:Remove() end end
-    for _, hl in pairs(Highlights) do if hl then hl:Destroy() end end
+    for plr, line in pairs(espSnaplines) do if line then line:Remove() end end
+    for plr, hl in pairs(Highlights) do if hl then hl:Destroy() end end
     table.clear(espBoxes)
     table.clear(espHealthBars)
     table.clear(espSnaplines)
@@ -73,7 +73,9 @@ end
 
 game:GetService("RunService").RenderStepped:Connect(function()
     if not _G.Settings.ESP.Enabled or not drawingAvailable then
-        CleanupESP()
+        if next(espBoxes) or next(espHealthBars) or next(espSnaplines) or next(Highlights) then
+            CleanupESP()
+        end
         return
     end
 
@@ -143,5 +145,18 @@ game:GetService("RunService").RenderStepped:Connect(function()
         end
 
         UpdateChams(plr, char)
+    end
+
+    for plr in pairs(espBoxes) do
+        if not plr.Character or not plr.Character:FindFirstChild("Humanoid") or plr.Character.Humanoid.Health <= 0 then
+            if espBoxes[plr] then espBoxes[plr]:Remove() espBoxes[plr] = nil end
+            if espHealthBars[plr] then
+                if espHealthBars[plr].bg then espHealthBars[plr].bg:Remove() end
+                if espHealthBars[plr].fill then espHealthBars[plr].fill:Remove() end
+                espHealthBars[plr] = nil
+            end
+            if espSnaplines[plr] then espSnaplines[plr]:Remove() espSnaplines[plr] = nil end
+            if Highlights[plr] then Highlights[plr]:Destroy() Highlights[plr] = nil end
+        end
     end
 end)
