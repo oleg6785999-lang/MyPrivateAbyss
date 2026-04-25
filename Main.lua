@@ -1,4 +1,3 @@
--- Main.lua
 _G.Settings = _G.Settings or {
     Tracers = {Enabled = false, OnlyEnemies = true, FOV = 160, Thickness = 2, Transparency = 0.8, Color = Color3.fromRGB(255,255,255)},
     Aimbot = {Enabled = false, FOV = 120, Smoothing = 3, Prediction = 0.12, HitboxOffset = 2.5, Sensitivity = 1.2, WallCheck = true, Silent = false},
@@ -43,11 +42,7 @@ LoadModule("Movement")
 LoadModule("AntiAim")
 
 local Rayfield = nil
-local urls = {
-    "https://sirius.menu/rayfield",
-    "https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua",
-    "https://raw.githubusercontent.com/Janixx/Rayfield/main/source.lua"
-}
+local urls = {"https://sirius.menu/rayfield", "https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"}
 
 local function LoadRayfield()
     for _, url in ipairs(urls) do
@@ -71,20 +66,15 @@ if Rayfield then
     local newName = "x" .. string.char(math.random(65,90)) .. string.char(math.random(65,90)) .. string.char(math.random(65,90)) .. tostring(math.random(1000,9999))
     pcall(function() Rayfield.Interface.Name = newName end)
 
-    local Window = Rayfield:CreateWindow({
-        Name = "ABYSS ARCHON • MODULAR",
-        LoadingTitle = "ABYSS ARCHON v1005.420",
-        LoadingSubtitle = "Professional Modular Edition",
-        Theme = "DarkBlue",
-        ToggleUIKeybind = Enum.KeyCode.RightShift,
-        ConfigurationSaving = {Enabled = true, FolderName = "AbyssUniversal", FileName = "Config"}
-    })
+    local Window = Rayfield:CreateWindow({Name = "ABYSS ARCHON • MODULAR", LoadingTitle = "ABYSS ARCHON v1005.420", LoadingSubtitle = "Professional Modular Edition", Theme = "DarkBlue", ToggleUIKeybind = Enum.KeyCode.RightShift, ConfigurationSaving = {Enabled = true, FolderName = "AbyssUniversal", FileName = "Config"}})
 
     local Tab_Combat = Window:CreateTab("Бой", "crosshair")
     Tab_Combat:CreateSection("Аимбот")
     Tab_Combat:CreateToggle({Name = "Аимбот (ПКМ)", CurrentValue = false, Callback = function(v) _G.Settings.Aimbot.Enabled = v end})
     Tab_Combat:CreateToggle({Name = "Silent Aim", CurrentValue = false, Callback = function(v) _G.Settings.Aimbot.Silent = v end})
     Tab_Combat:CreateToggle({Name = "Triggerbot", CurrentValue = false, Callback = function(v) _G.Settings.Triggerbot = v end})
+    Tab_Combat:CreateSlider({Name = "Aimbot FOV", Range = {10,600}, Increment = 10, CurrentValue = 120, Callback = function(v) _G.Settings.Aimbot.FOV = v end})
+    Tab_Combat:CreateSlider({Name = "Smoothing", Range = {1,20}, Increment = 1, CurrentValue = 3, Callback = function(v) _G.Settings.Aimbot.Smoothing = v end})
 
     local Tab_Visuals = Window:CreateTab("Визуал", "eye")
     Tab_Visuals:CreateSection("Трассеры")
