@@ -11,8 +11,8 @@ local espSnaplines = {}
 
 local function IsEnemy(player)
     if not _G.Settings.ESP.OnlyEnemies then return true end
-    if not player.Team or not game.Players.LocalPlayer.Team then return true end
-    return player.Team ~= game.Players.LocalPlayer.Team
+    if not player.Team or not _G.LocalPlayer.Team then return true end
+    return player.Team ~= _G.LocalPlayer.Team
 end
 
 local function IsVisible(targetPosition)
@@ -27,13 +27,24 @@ end
 
 local function VisualsLoop()
     while task.wait(0.016) do
-        if not _G.Settings.ESP.Enabled or not drawingAvailable then continue end
+        if not _G.Settings.ESP.Enabled or not drawingAvailable then
+            for _, box in pairs(espBoxes) do if box then box.Visible = false end end
+            for _, bars in pairs(espHealthBars) do 
+                if bars then 
+                    if bars.bg then bars.bg.Visible = false end 
+                    if bars.fill then bars.fill.Visible = false end 
+                end 
+            end
+            for _, line in pairs(espSnaplines) do if line then line.Visible = false end end
+            continue
+        end
+
         for _, plr in ipairs(Players:GetPlayers()) do
             if plr == _G.LocalPlayer or not plr.Character then continue end
             if _G.Settings.ESP.OnlyEnemies and not IsEnemy(plr) then continue end
             local root = plr.Character:FindFirstChild("HumanoidRootPart")
             local hum = plr.Character:FindFirstChild("Humanoid")
-            if not root or not hum then continue end
+            if not root or not hum or hum.Health <= 0 then continue end
             local dist = (root.Position - Camera.CFrame.Position).Magnitude
             if dist > _G.Settings.ESP.MaxDistance then continue end
             local headPos = root.Position + Vector3.new(0, 2.5, 0)
@@ -92,6 +103,18 @@ local function VisualsLoop()
                 line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
                 line.To = Vector2.new(headScreen.X, headScreen.Y)
                 line.Visible = true
+            end
+
+            if _G.Settings.ESP.Chams then
+                local highlight = plr.Character:FindFirstChild("AbyssHighlight") or Instance.new("Highlight", plr.Character)
+                highlight.Name = "AbyssHighlight"
+                highlight.FillColor = Color3.fromRGB(255, 0, 0)
+                highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                highlight.FillTransparency = 0.5
+            else
+                if plr.Character:FindFirstChild("AbyssHighlight") then
+                    plr.Character.AbyssHighlight:Destroy()
+                end
             end
         end
     end
