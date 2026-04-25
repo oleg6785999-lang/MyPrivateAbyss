@@ -24,7 +24,7 @@ _G.Players = game:GetService("Players")
 _G.Camera = workspace.CurrentCamera
 _G.LocalPlayer = _G.Players.LocalPlayer
 
-local baseUrl = "https://raw.githubusercontent.com/ВАШ_НИК/AbyssArchon/main/"
+local baseUrl = "https://raw.githubusercontent.com/oleg6785999-lang/MyPrivateAbyss/main/"
 
 local function LoadModule(name)
     local success, result = pcall(function()
