@@ -53,6 +53,24 @@ local function CleanupESP()
     table.clear(Highlights)
 end
 
+local function UpdateChams(plr, char)
+    if _G.Settings.ESP.Chams then
+        if not Highlights[plr] then
+            local hl = Instance.new("Highlight")
+            hl.Name = "ABYSS_Highlight"
+            hl.FillColor = Color3.fromRGB(255,0,0)
+            hl.OutlineColor = Color3.fromRGB(255,255,255)
+            hl.FillTransparency = 0.5
+            hl.Adornee = char
+            hl.Parent = char
+            Highlights[plr] = hl
+        end
+    elseif Highlights[plr] then
+        Highlights[plr]:Destroy()
+        Highlights[plr] = nil
+    end
+end
+
 game:GetService("RunService").RenderStepped:Connect(function()
     if not _G.Settings.ESP.Enabled or not drawingAvailable then
         CleanupESP()
@@ -124,20 +142,6 @@ game:GetService("RunService").RenderStepped:Connect(function()
             line.Visible = true
         end
 
-        if _G.Settings.ESP.Chams then
-            if not Highlights[plr] then
-                local hl = Instance.new("Highlight")
-                hl.Name = "ABYSS_Highlight"
-                hl.FillColor = Color3.fromRGB(255,0,0)
-                hl.OutlineColor = Color3.fromRGB(255,255,255)
-                hl.FillTransparency = 0.5
-                hl.Adornee = char
-                hl.Parent = char
-                Highlights[plr] = hl
-            end
-        elseif Highlights[plr] then
-            Highlights[plr]:Destroy()
-            Highlights[plr] = nil
-        end
+        UpdateChams(plr, char)
     end
 end)
