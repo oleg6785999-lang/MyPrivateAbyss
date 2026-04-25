@@ -6,6 +6,7 @@ local flyAttachment, flyLinearVelocity, flyAlignOrientation = nil, nil, nil
 
 local function MovementLoop()
     while task.wait() do
+        -- Fly
         if _G.Settings.Fly.Enabled then
             local root = _G.LocalPlayer.Character and _G.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             if root then
@@ -42,11 +43,16 @@ local function MovementLoop()
             if flyAttachment then flyAttachment:Destroy() flyAttachment = nil end
         end
 
+        -- SpeedHack (CFrame метод)
         if _G.Settings.SpeedHack.Enabled and _G.LocalPlayer.Character then
+            local root = _G.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             local hum = _G.LocalPlayer.Character:FindFirstChild("Humanoid")
-            if hum then hum.WalkSpeed = _G.Settings.SpeedHack.Speed end
+            if root and hum and hum.MoveDirection.Magnitude > 0 then
+                root.CFrame = root.CFrame + (hum.MoveDirection * (_G.Settings.SpeedHack.Speed / 100))
+            end
         end
 
+        -- Infinite Jump
         if _G.Settings.InfJump and _G.LocalPlayer.Character then
             local hum = _G.LocalPlayer.Character:FindFirstChild("Humanoid")
             if hum and UserInputService:IsKeyDown(Enum.KeyCode.Space) and tick() - lastJumpTime > 0.25 then
@@ -55,9 +61,21 @@ local function MovementLoop()
             end
         end
 
+        -- NoClip
         if _G.Settings.NoClip and _G.LocalPlayer.Character then
             for _, part in ipairs(_G.LocalPlayer.Character:GetDescendants()) do
                 if part:IsA("BasePart") then part.CanCollide = false end
+            end
+        end
+
+        -- Hitbox Expander
+        if _G.Settings.HitboxExpander.Enabled then
+            for _, plr in ipairs(_G.Players:GetPlayers()) do
+                if plr ~= _G.LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                    local part = plr.Character.HumanoidRootPart
+                    part.Size = Vector3.new(_G.Settings.HitboxExpander.Size, _G.Settings.HitboxExpander.Size, _G.Settings.HitboxExpander.Size)
+                    part.Transparency = 0.7
+                end
             end
         end
     end
