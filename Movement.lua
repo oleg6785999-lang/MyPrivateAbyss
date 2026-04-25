@@ -6,6 +6,41 @@ local flyLinearVelocity = nil
 local flyAlignOrientation = nil
 local lastJumpTime = 0
 local originalCanCollide = {}
+local flyEnabledLast = false
+
+local function ToggleFly(enable)
+    local char = _G.LocalPlayer.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    if enable then
+        if not flyAttachment then
+            flyAttachment = Instance.new("Attachment")
+            flyAttachment.Name = "ABYSS_FlyAttachment"
+            flyAttachment.Parent = root
+
+            flyLinearVelocity = Instance.new("LinearVelocity")
+            flyLinearVelocity.Name = "ABYSS_FlyVelocity"
+            flyLinearVelocity.Attachment0 = flyAttachment
+            flyLinearVelocity.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+            flyLinearVelocity.MaxForce = math.huge
+            flyLinearVelocity.Parent = root
+
+            flyAlignOrientation = Instance.new("AlignOrientation")
+            flyAlignOrientation.Name = "ABYSS_FlyAlign"
+            flyAlignOrientation.Attachment0 = flyAttachment
+            flyAlignOrientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
+            flyAlignOrientation.MaxTorque = math.huge
+            flyAlignOrientation.RigidityEnabled = true
+            flyAlignOrientation.Parent = root
+        end
+    else
+        if flyLinearVelocity then flyLinearVelocity:Destroy() flyLinearVelocity = nil end
+        if flyAlignOrientation then flyAlignOrientation:Destroy() flyAlignOrientation = nil end
+        if flyAttachment then flyAttachment:Destroy() flyAttachment = nil end
+    end
+end
 
 local function ToggleNoClip(enable)
     local char = _G.LocalPlayer.Character
@@ -13,7 +48,9 @@ local function ToggleNoClip(enable)
     for _, part in ipairs(char:GetDescendants()) do
         if part:IsA("BasePart") then
             if enable then
-                originalCanCollide[part] = part.CanCollide
+                if originalCanCollide[part] == nil then
+                    originalCanCollide[part] = part.CanCollide
+                end
                 part.CanCollide = false
             else
                 if originalCanCollide[part] ~= nil then
@@ -24,6 +61,31 @@ local function ToggleNoClip(enable)
     end
 end
 
+local function UpdateHitbox()
+    if not _G.Settings.HitboxExpander.Enabled then return end
+    local size = _G.Settings.HitboxExpander.Size or 12
+    for _, plr in ipairs(_G.Players:GetPlayers()) do
+        if plr ~= _G.LocalPlayer and plr.Character then
+            for _, part in ipairs(plr.Character:GetChildren()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    if part.Size.X ~= size then
+                        part.Size = Vector3.new(size, size, size)
+                        part.Transparency = 0.7
+                    end
+                end
+            end
+        end
+    end
+end
+
+_G.Players.PlayerAdded:Connect(function(plr)
+    plr.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        ToggleNoClip(_G.Settings.NoClip)
+        UpdateHitbox()
+    end)
+end)
+
 RunService.Heartbeat:Connect(function()
     local char = _G.LocalPlayer.Character
     if not char then return end
@@ -31,26 +93,12 @@ RunService.Heartbeat:Connect(function()
     local hum = char:FindFirstChild("Humanoid")
     if not root or not hum then return end
 
-    if _G.Settings.Fly.Enabled then
-        if not flyAttachment then
-            flyAttachment = Instance.new("Attachment")
-            flyAttachment.Name = "ABYSS_FlyAttachment"
-            flyAttachment.Parent = root
-            flyLinearVelocity = Instance.new("LinearVelocity")
-            flyLinearVelocity.Name = "ABYSS_FlyVelocity"
-            flyLinearVelocity.Attachment0 = flyAttachment
-            flyLinearVelocity.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
-            flyLinearVelocity.MaxForce = math.huge
-            flyLinearVelocity.Parent = root
-            flyAlignOrientation = Instance.new("AlignOrientation")
-            flyAlignOrientation.Name = "ABYSS_FlyAlign"
-            flyAlignOrientation.Attachment0 = flyAttachment
-            flyAlignOrientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
-            flyAlignOrientation.MaxTorque = math.huge
-            flyAlignOrientation.RigidityEnabled = true
-            flyAlignOrientation.Parent = root
-        end
+    if _G.Settings.Fly.Enabled ~= flyEnabledLast then
+        ToggleFly(_G.Settings.Fly.Enabled)
+        flyEnabledLast = _G.Settings.Fly.Enabled
+    end
 
+    if _G.Settings.Fly.Enabled and flyLinearVelocity then
         local move = Vector3.new()
         local camLook = _G.Camera.CFrame.LookVector
         local camRight = _G.Camera.CFrame.RightVector
@@ -64,10 +112,6 @@ RunService.Heartbeat:Connect(function()
         local speed = _G.Settings.Fly.Speed or 70
         flyLinearVelocity.VectorVelocity = move.Magnitude > 0 and move.Unit * speed or Vector3.new()
         flyAlignOrientation.CFrame = _G.Camera.CFrame
-    else
-        if flyLinearVelocity then flyLinearVelocity:Destroy() flyLinearVelocity = nil end
-        if flyAlignOrientation then flyAlignOrientation:Destroy() flyAlignOrientation = nil end
-        if flyAttachment then flyAttachment:Destroy() flyAttachment = nil end
     end
 
     if _G.Settings.SpeedHack.Enabled then
@@ -81,25 +125,6 @@ RunService.Heartbeat:Connect(function()
         lastJumpTime = tick()
     end
 
-    if _G.Settings.NoClip then
-        ToggleNoClip(true)
-    else
-        ToggleNoClip(false)
-    end
-
-    if _G.Settings.HitboxExpander.Enabled then
-        for _, plr in ipairs(_G.Players:GetPlayers()) do
-            if plr ~= _G.LocalPlayer and plr.Character then
-                for _, part in ipairs(plr.Character:GetChildren()) do
-                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                        local desired = _G.Settings.HitboxExpander.Size or 12
-                        if part.Size.X ~= desired then
-                            part.Size = Vector3.new(desired, desired, desired)
-                            part.Transparency = 0.7
-                        end
-                    end
-                end
-            end
-        end
-    end
+    ToggleNoClip(_G.Settings.NoClip)
+    UpdateHitbox()
 end)
