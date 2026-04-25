@@ -79,10 +79,8 @@ local function UpdateAntiAim()
     end
 end
 
-local function AntiAimLoop()
+task.spawn(function()
     while task.wait() do
         UpdateAntiAim()
     end
-end
-
-task.spawn(AntiAimLoop)
+end)
