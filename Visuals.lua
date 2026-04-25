@@ -44,7 +44,15 @@ local function VisualsLoop()
             if _G.Settings.ESP.OnlyEnemies and not IsEnemy(plr) then continue end
             local root = plr.Character:FindFirstChild("HumanoidRootPart")
             local hum = plr.Character:FindFirstChild("Humanoid")
-            if not root or not hum or hum.Health <= 0 then continue end
+            if not root or not hum then continue end
+            if hum.Health <= 0 then
+                if espBoxes[plr] then espBoxes[plr].Visible = false end
+                if espHealthBars[plr] then 
+                    if espHealthBars[plr].bg then espHealthBars[plr].bg.Visible = false end
+                    if espHealthBars[plr].fill then espHealthBars[plr].fill.Visible = false end
+                end
+                continue
+            end
             local dist = (root.Position - Camera.CFrame.Position).Magnitude
             if dist > _G.Settings.ESP.MaxDistance then continue end
             local headPos = root.Position + Vector3.new(0, 2.5, 0)
