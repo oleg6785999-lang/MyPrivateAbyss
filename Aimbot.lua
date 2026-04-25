@@ -1,5 +1,6 @@
 -- Aimbot.lua
-local RunService = game:GetService("RunService")
+local Players = _G.Players or game:GetService("Players")
+local Camera = _G.Camera or workspace.CurrentCamera
 local UserInputService = game:GetService("UserInputService")
 
 local isAiming = false
@@ -11,6 +12,22 @@ end)
 UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton2 then isAiming = false end
 end)
+
+local function IsEnemy(player)
+    if not _G.Settings.ESP.OnlyEnemies then return true end
+    if not player.Team or not game.Players.LocalPlayer.Team then return true end
+    return player.Team ~= game.Players.LocalPlayer.Team
+end
+
+local function IsVisible(targetPosition)
+    if not _G.LocalPlayer.Character then return false end
+    local origin = Camera.CFrame.Position
+    local direction = targetPosition - origin
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = {_G.LocalPlayer.Character}
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    return not Workspace:Raycast(origin, direction, params)
+end
 
 local function AimbotLoop()
     while task.wait() do
