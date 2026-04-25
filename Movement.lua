@@ -43,7 +43,7 @@ local function MovementLoop()
             if flyAttachment then flyAttachment:Destroy() flyAttachment = nil end
         end
 
-        -- SpeedHack (CFrame метод)
+        -- SpeedHack (CFrame)
         if _G.Settings.SpeedHack.Enabled and _G.LocalPlayer.Character then
             local root = _G.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             local hum = _G.LocalPlayer.Character:FindFirstChild("Humanoid")
