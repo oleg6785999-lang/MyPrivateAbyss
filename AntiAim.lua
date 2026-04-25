@@ -1,10 +1,7 @@
--- AntiAim.lua
 local RunService = game:GetService("RunService")
 
 local desyncGyro = nil
-local desyncAngle = 0
 local originalNeckC0 = nil
-local fakeLagCounter = 0
 
 local function UpdateAntiAim()
     local char = _G.LocalPlayer.Character
@@ -31,56 +28,27 @@ local function UpdateAntiAim()
             local neck = head:FindFirstChild("Neck")
             if neck and neck:IsA("Motor6D") then
                 neck.C0 = originalNeckC0
-                originalNeckC0 = nil
             end
         end
+        originalNeckC0 = nil
     end
 
-    if _G.Settings.AntiAim.Jitter then
-        local angleY = math.rad(math.random(-_G.Settings.AntiAim.JitterAngle, _G.Settings.AntiAim.JitterAngle))
-        local angleX = math.rad(math.random(-15, 15))
-        root.CFrame = root.CFrame * CFrame.Angles(angleX, angleY, 0)
-    end
-
-    if _G.Settings.Rage.Spinbot and not _G.Settings.Fly.Enabled then
-        root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(_G.Settings.Rage.SpinSpeed), 0)
-    end
-
-    if _G.Settings.AntiAim.Desync and desyncGyro then
+    if _G.Settings.AntiAim.Desync then
+        if not desyncGyro then
+            desyncGyro = Instance.new("BodyGyro")
+            desyncGyro.MaxTorque = Vector3.new(0, math.huge, 0)
+            desyncGyro.P = 10000
+            desyncGyro.Parent = root
+        end
         if _G.Settings.AntiAim.DesyncType == "Spin" then
-            desyncAngle = (desyncAngle + _G.Settings.AntiAim.DesyncSpeed) % 360
-            desyncGyro.CFrame = CFrame.Angles(0, math.rad(desyncAngle), 0)
+            desyncGyro.CFrame = CFrame.Angles(0, math.rad(tick() * _G.Settings.AntiAim.DesyncSpeed), 0)
         elseif _G.Settings.AntiAim.DesyncType == "Backwards" then
-            desyncGyro.CFrame = (root.CFrame * CFrame.Angles(0, math.pi, 0)).Rotation
+            desyncGyro.CFrame = root.CFrame * CFrame.Angles(0, math.pi, 0)
         end
-    end
-
-    if _G.Settings.AntiAim.FakeLag and not _G.Settings.Fly.Enabled then
-        fakeLagCounter = fakeLagCounter + 1
-        if fakeLagCounter % _G.Settings.AntiAim.FakeLagFrequency == 0 then
-            local intensity = _G.Settings.AntiAim.FakeLagIntensity
-            local origPos = root.Position
-            local offset = Vector3.new(math.random(-intensity, intensity), math.random(-intensity/2, intensity/2), math.random(-intensity, intensity))
-            if _G.Settings.AntiAim.FakeLagMode == "BackAndForth" then
-                if fakeLagCounter % 2 == 0 then
-                    root.CFrame = root.CFrame + offset
-                else
-                    root.CFrame = CFrame.new(origPos) * root.CFrame.Rotation
-                end
-            else
-                root.CFrame = root.CFrame + offset
-            end
-            if _G.Settings.AntiAim.FakeLagNoClip then
-                for _, part in ipairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") then part.CanCollide = false end
-                end
-            end
-        end
+    elseif desyncGyro then
+        desyncGyro:Destroy()
+        desyncGyro = nil
     end
 end
 
-task.spawn(function()
-    while task.wait() do
-        UpdateAntiAim()
-    end
-end)
+RunService.Heartbeat:Connect(UpdateAntiAim)
