@@ -1,3 +1,6 @@
+if _G.AimbotHooked then return end
+_G.AimbotHooked = true
+
 local Players = _G.Players or game:GetService("Players")
 local Camera = _G.Camera or workspace.CurrentCamera
 local UserInputService = game:GetService("UserInputService")
