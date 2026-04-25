@@ -33,9 +33,15 @@ local function UpdateAntiAim()
         originalNeckC0 = nil
     end
 
+    if _G.Settings.AntiAim.Jitter then
+        local angle = math.rad(math.sin(tick() * 20) * _G.Settings.AntiAim.JitterAngle)
+        root.CFrame = root.CFrame * CFrame.Angles(0, angle, 0)
+    end
+
     if _G.Settings.AntiAim.Desync then
         if not desyncGyro then
             desyncGyro = Instance.new("BodyGyro")
+            desyncGyro.Name = "ABYSS_DesyncGyro"
             desyncGyro.MaxTorque = Vector3.new(0, math.huge, 0)
             desyncGyro.P = 10000
             desyncGyro.Parent = root
