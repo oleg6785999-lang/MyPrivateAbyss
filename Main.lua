@@ -62,11 +62,17 @@ if not loaded then
 end
 
 if Rayfield then
-    local oldName = "Rayfield"
     local newName = "x" .. string.char(math.random(65,90)) .. string.char(math.random(65,90)) .. string.char(math.random(65,90)) .. tostring(math.random(1000,9999))
     pcall(function() Rayfield.Interface.Name = newName end)
 
-    local Window = Rayfield:CreateWindow({Name = "ABYSS ARCHON • MODULAR", LoadingTitle = "ABYSS ARCHON v1005.420", LoadingSubtitle = "Professional Modular Edition", Theme = "DarkBlue", ToggleUIKeybind = Enum.KeyCode.RightShift, ConfigurationSaving = {Enabled = true, FolderName = "AbyssUniversal", FileName = "Config"}})
+    local Window = Rayfield:CreateWindow({
+        Name = "ABYSS ARCHON • MODULAR",
+        LoadingTitle = "ABYSS ARCHON v1005.420",
+        LoadingSubtitle = "Professional Modular Edition",
+        Theme = "DarkBlue",
+        ToggleUIKeybind = Enum.KeyCode.RightShift,
+        ConfigurationSaving = {Enabled = true, FolderName = "AbyssUniversal", FileName = "Config"}
+    })
 
     local Tab_Combat = Window:CreateTab("Бой", "crosshair")
     Tab_Combat:CreateSection("Аимбот")
