@@ -16,6 +16,9 @@ local function GetDrawing(class)
 end
 
 local Highlights = {}
+local espBoxes = {}
+local espHealthBars = {}
+local espSnaplines = {}
 
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -34,20 +37,25 @@ local function IsVisible(targetPosition)
     return not workspace:Raycast(origin, direction, rayParams)
 end
 
-local espBoxes = {}
-local espHealthBars = {}
-local espSnaplines = {}
+local function CleanupESP()
+    for _, box in pairs(espBoxes) do if box then box:Remove() end end
+    for _, bars in pairs(espHealthBars) do 
+        if bars then 
+            if bars.bg then bars.bg:Remove() end 
+            if bars.fill then bars.fill:Remove() end 
+        end 
+    end
+    for _, line in pairs(espSnaplines) do if line then line:Remove() end end
+    for _, hl in pairs(Highlights) do if hl then hl:Destroy() end end
+    table.clear(espBoxes)
+    table.clear(espHealthBars)
+    table.clear(espSnaplines)
+    table.clear(Highlights)
+end
 
 game:GetService("RunService").RenderStepped:Connect(function()
     if not _G.Settings.ESP.Enabled or not drawingAvailable then
-        for _, box in pairs(espBoxes) do if box then box.Visible = false end end
-        for _, bars in pairs(espHealthBars) do 
-            if bars then 
-                if bars.bg then bars.bg.Visible = false end 
-                if bars.fill then bars.fill.Visible = false end 
-            end 
-        end
-        for _, line in pairs(espSnaplines) do if line then line.Visible = false end end
+        CleanupESP()
         return
     end
 
@@ -119,7 +127,7 @@ game:GetService("RunService").RenderStepped:Connect(function()
         if _G.Settings.ESP.Chams then
             if not Highlights[plr] then
                 local hl = Instance.new("Highlight")
-                hl.Name = "ArchonHighlight"
+                hl.Name = "ABYSS_Highlight"
                 hl.FillColor = Color3.fromRGB(255,0,0)
                 hl.OutlineColor = Color3.fromRGB(255,255,255)
                 hl.FillTransparency = 0.5
