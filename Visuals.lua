@@ -51,6 +51,9 @@ local function VisualsLoop()
                     if espHealthBars[plr].bg then espHealthBars[plr].bg.Visible = false end
                     if espHealthBars[plr].fill then espHealthBars[plr].fill.Visible = false end
                 end
+                if plr.Character:FindFirstChild("AbyssHighlight") then
+                    plr.Character.AbyssHighlight:Destroy()
+                end
                 continue
             end
             local dist = (root.Position - Camera.CFrame.Position).Magnitude
