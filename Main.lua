@@ -2,7 +2,7 @@ _G.Settings = _G.Settings or {
     Aimbot = {Enabled = false, FOV = 120, Smoothing = 3, Prediction = 0.12, HitboxOffset = 2.5, Sensitivity = 1.2, WallCheck = true, Silent = false},
     Rage = {Spinbot = false, SpinSpeed = 25},
     SpeedHack = {Enabled = false, Speed = 50},
-    Fly = {Enabled = false, Speed = 70},
+    Fly = {Enabled = false, Speed = 65},
     InfJump = false,
     NoClip = false,
     HitboxExpander = {Enabled = false, Size = 12},
@@ -122,7 +122,7 @@ if Rayfield then
     Tab_Movement:CreateToggle({Name = "Infinite Jump", CurrentValue = false, Callback = function(v) _G.Settings.InfJump = v end})
     Tab_Movement:CreateToggle({Name = "Hitbox Expander", CurrentValue = false, Callback = function(v) _G.Settings.HitboxExpander.Enabled = v end})
     Tab_Movement:CreateToggle({Name = "Fly (X)", CurrentValue = false, Callback = function(v) _G.Settings.Fly.Enabled = v end})
-    Tab_Movement:CreateSlider({Name = "Fly Speed", Range = {30,150}, Increment = 5, CurrentValue = 70, Callback = function(v) _G.Settings.Fly.Speed = v end})
+    Tab_Movement:CreateSlider({Name = "Fly Speed", Range = {30,150}, Increment = 5, CurrentValue = 65, Callback = function(v) _G.Settings.Fly.Speed = v end})
 
     task.wait(0.5)
     Rayfield:LoadConfiguration()
