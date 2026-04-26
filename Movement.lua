@@ -12,7 +12,8 @@ local function ToggleFly(enable)
     local char = _G.LocalPlayer.Character
     if not char then return end
     local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
+    local hum = char:FindFirstChild("Humanoid")
+    if not root or not hum then return end
 
     if enable then
         if not flyAttachment then
@@ -36,6 +37,7 @@ local function ToggleFly(enable)
             flyAlignOrientation.Parent = root
 
             root.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
+            hum:ChangeState(Enum.HumanoidStateType.Physics)
         end
     else
         if flyLinearVelocity then flyLinearVelocity:Destroy() flyLinearVelocity = nil end
@@ -134,24 +136,32 @@ RunService.Heartbeat:Connect(function()
         if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.new(0,1,0) end
         if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.new(0,1,0) end
 
-        local speed = _G.Settings.Fly.Speed or 65
+        local speed = _G.Settings.Fly.Speed or 58
         flyLinearVelocity.VectorVelocity = move.Magnitude > 0 and move.Unit * speed or Vector3.new()
         flyAlignOrientation.CFrame = _G.Camera.CFrame
     end
 
     if _G.Settings.SpeedHack.Enabled then
-        hum.WalkSpeed = _G.Settings.SpeedHack.Speed or 50
-        if root.AssemblyLinearVelocity then
-            local vel = root.AssemblyLinearVelocity
-            root.AssemblyLinearVelocity = Vector3.new(vel.X, vel.Y, vel.Z)
+        if hum.WalkSpeed ~= _G.Settings.SpeedHack.Speed then
+            hum.WalkSpeed = _G.Settings.SpeedHack.Speed or 50
         end
+        root.AssemblyLinearVelocity = root.AssemblyLinearVelocity * Vector3.new(1.02, 1, 1.02)
     else
-        hum.WalkSpeed = 16
+        if hum.WalkSpeed ~= 16 then
+            hum.WalkSpeed = 16
+        end
     end
 
     if _G.Settings.InfJump and UserInputService:IsKeyDown(Enum.KeyCode.Space) and tick() - lastJumpTime > (0.18 + math.random() * 0.1) then
         hum:ChangeState(Enum.HumanoidStateType.Jumping)
         lastJumpTime = tick()
+        if root.AssemblyLinearVelocity then
+            root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, 0, root.AssemblyLinearVelocity.Z)
+        end
+    end
+
+    if _G.Settings.Rage.Spinbot then
+        root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(_G.Settings.Rage.SpinSpeed or 25), 0)
     end
 
     ToggleNoClip(_G.Settings.NoClip)
