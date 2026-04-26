@@ -51,6 +51,7 @@ local function CleanupESP()
     table.clear(espHealthBars)
     table.clear(espSnaplines)
     table.clear(Highlights)
+    table.clear(DrawingPool)
 end
 
 local function UpdateChams(plr, char)
