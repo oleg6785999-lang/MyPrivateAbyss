@@ -80,6 +80,21 @@ game:GetService("RunService").RenderStepped:Connect(function()
         return
     end
 
+    if not _G.Settings.ESP.Boxes then
+        for _, box in pairs(espBoxes) do if box then box.Visible = false end end
+    end
+    if not _G.Settings.ESP.HealthBar then
+        for _, bars in pairs(espHealthBars) do 
+            if bars then 
+                if bars.bg then bars.bg.Visible = false end 
+                if bars.fill then bars.fill.Visible = false end 
+            end 
+        end
+    end
+    if not _G.Settings.ESP.Snaplines then
+        for _, line in pairs(espSnaplines) do if line then line.Visible = false end end
+    end
+
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr == _G.LocalPlayer or not plr.Character then continue end
         if _G.Settings.ESP.OnlyEnemies and not IsEnemy(plr) then continue end
