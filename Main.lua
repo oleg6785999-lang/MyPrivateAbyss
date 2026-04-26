@@ -18,7 +18,6 @@ _G.Settings = _G.Settings or {
 _G.Players = game:GetService("Players")
 _G.Camera = workspace.CurrentCamera
 _G.LocalPlayer = _G.Players.LocalPlayer
-_G.Connections = _G.Connections or {}
 
 local baseUrl = "https://raw.githubusercontent.com/oleg6785999-lang/MyPrivateAbyss/main/"
 
@@ -37,6 +36,7 @@ local function FastSafeLoad(name)
     return false
 end
 
+-- Загружаем модули
 FastSafeLoad("Aimbot")
 FastSafeLoad("Visuals")
 FastSafeLoad("Movement")
@@ -128,20 +128,5 @@ if Rayfield then
     Rayfield:LoadConfiguration()
     Rayfield:Notify({Title = "ABYSS ARCHON", Content = "MODULAR v1005.420 LOADED | READY FOR ANNIHILATION", Duration = 8})
 end
-
--- Panic Key: RightShift + P = выключить всё и очистить
-game:GetService("UserInputService").InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.KeyCode == Enum.KeyCode.P and game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.RightShift) then
-        _G.Settings.Aimbot.Enabled = false
-        _G.Settings.ESP.Enabled = false
-        _G.Settings.Fly.Enabled = false
-        _G.Settings.SpeedHack.Enabled = false
-        _G.Settings.NoClip = false
-        _G.Settings.HitboxExpander.Enabled = false
-        _G.Settings.Rage.Spinbot = false
-        print("[ABYSS] PANIC ACTIVATED — ALL FEATURES DISABLED")
-    end
-end)
 
 print("ABYSS ARCHON MODULAR LOADER v1005.420 — AWAKENED")
