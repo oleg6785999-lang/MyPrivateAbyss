@@ -107,7 +107,6 @@ if Rayfield then
     Rayfield:LoadConfiguration()
     Rayfield:Notify({Title = "ABYSS ARCHON", Content = "MODULAR v1005.420 LOADED | READY FOR ANNIHILATION", Duration = 8})
 
-    -- ЗАГРУЗКА МОДУЛЕЙ ТОЛЬКО ПОСЛЕ UI
     local function FastSafeLoad(name)
         for i = 1, 4 do
             local success = pcall(function()
@@ -130,7 +129,9 @@ if Rayfield then
 
     task.wait(0.6)
     print("[ABYSS] Forcing Aimbot refresh...")
-    _G.Settings.Aimbot.Enabled = _G.Settings.Aimbot.Enabled
+    if _G.Settings.Aimbot then
+        _G.Settings.Aimbot.Enabled = _G.Settings.Aimbot.Enabled
+    end
 end
 
 print("ABYSS ARCHON MODULAR LOADER v1005.420 — AWAKENED")
