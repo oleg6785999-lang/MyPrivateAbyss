@@ -4,21 +4,16 @@ _G.AimbotHooked = true
 local Players = _G.Players or game:GetService("Players")
 local Camera = _G.Camera or workspace.CurrentCamera
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
-local isAiming = false
-
-UserInputService.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton2 then isAiming = true end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton2 then isAiming = false end
-end)
-
-_G.LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(0.3)
-    isAiming = false
-end)
+local fovCircle = Drawing.new("Circle")
+fovCircle.Thickness = 2
+fovCircle.NumSides = 64
+fovCircle.Radius = 120
+fovCircle.Color = Color3.fromRGB(255, 255, 255)
+fovCircle.Transparency = 0.7
+fovCircle.Filled = false
+fovCircle.Visible = false
 
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -92,11 +87,19 @@ mt.__namecall = newcclosure(function(self, ...)
 end)
 setreadonly(mt, true)
 
-game:GetService("RunService").RenderStepped:Connect(function()
-    if not _G.Settings.Aimbot.Enabled or not isAiming then return end
+RunService.RenderStepped:Connect(function()
+    if not _G.Settings.Aimbot.Enabled then 
+        fovCircle.Visible = false
+        return 
+    end
+
+    local mousePos = UserInputService:GetMouseLocation()
+    fovCircle.Position = mousePos
+    fovCircle.Radius = _G.Settings.Aimbot.FOV or 120
+    fovCircle.Visible = true
+
     local target = GetClosest()
     if target and target.ScreenPos then
-        local mousePos = UserInputService:GetMouseLocation()
         local dx = (target.ScreenPos.X - mousePos.X) / (_G.Settings.Aimbot.Smoothing or 3)
         local dy = (target.ScreenPos.Y - mousePos.Y) / (_G.Settings.Aimbot.Smoothing or 3)
         mousemoverel(dx * (_G.Settings.Aimbot.Sensitivity or 1), dy * (_G.Settings.Aimbot.Sensitivity or 1))
