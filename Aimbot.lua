@@ -109,11 +109,6 @@ RunService.RenderStepped:Connect(function()
     fovCircle.Radius = _G.Settings.Aimbot.FOV or 120
     fovCircle.Visible = true
 
-    local activateButton = _G.AimbotActivateButton or Enum.UserInputType.MouseButton1
-    if not UserInputService:IsMouseButtonPressed(activateButton) then
-        return
-    end
-
     local target = GetClosest()
     if target and target.ScreenPos then
         local camPos = Camera.CFrame.Position
