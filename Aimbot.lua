@@ -69,7 +69,7 @@ local function GetClosest()
     return closest
 end
 
--- SILENT AIM
+-- SILENT AIM HOOK
 local mt = getrawmetatable(game)
 local oldNamecall = mt.__namecall
 setreadonly(mt, false)
@@ -89,8 +89,10 @@ mt.__namecall = newcclosure(function(self, ...)
 end)
 setreadonly(mt, true)
 
--- MAIN LOOP (Always On)
+-- MAIN AIMBOT LOOP (Always On)
 RunService.RenderStepped:Connect(function()
+    print("[ABYSS DEBUG] Aimbot loop | Enabled =", _G.Settings.Aimbot.Enabled)
+
     if not _G.Settings.Aimbot.Enabled then 
         fovCircle.Visible = false
         return 
@@ -103,9 +105,13 @@ RunService.RenderStepped:Connect(function()
 
     local target = GetClosest()
     if target and target.ScreenPos then
+        print("[ABYSS DEBUG] Target found! Distance:", (target.ScreenPos - mousePos).Magnitude)
         local dx = (target.ScreenPos.X - mousePos.X) / (_G.Settings.Aimbot.Smoothing or 3)
         local dy = (target.ScreenPos.Y - mousePos.Y) / (_G.Settings.Aimbot.Smoothing or 3)
         mousemoverel(dx * (_G.Settings.Aimbot.Sensitivity or 1.1), dy * (_G.Settings.Aimbot.Sensitivity or 1.1))
+        print("[ABYSS DEBUG] mousemoverel called")
+    else
+        print("[ABYSS DEBUG] No target in FOV")
     end
 end)
 
