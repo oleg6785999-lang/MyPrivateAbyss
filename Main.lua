@@ -2,7 +2,7 @@ _G.Settings = _G.Settings or {
     Aimbot = {Enabled = false, FOV = 120, Smoothing = 3, Prediction = 0.12, HitboxOffset = 2.5, Sensitivity = 1.2, WallCheck = true, Silent = false},
     Rage = {Spinbot = false, SpinSpeed = 25},
     SpeedHack = {Enabled = false, Speed = 50},
-    Fly = {Enabled = false, Speed = 65},
+    Fly = {Enabled = false, Speed = 58},
     InfJump = false,
     NoClip = false,
     HitboxExpander = {Enabled = false, Size = 12},
@@ -22,25 +22,25 @@ _G.Connections = _G.Connections or {}
 
 local baseUrl = "https://raw.githubusercontent.com/oleg6785999-lang/MyPrivateAbyss/main/"
 
-local function SafeLoad(name)
-    for i = 1, 6 do
+local function FastSafeLoad(name)
+    for i = 1, 4 do
         local success = pcall(function()
-            loadstring(game:HttpGet(baseUrl .. name .. ".lua"))()
+            loadstring(game:HttpGet(baseUrl .. name .. ".lua", true))()
         end)
         if success then 
             print("[ABYSS] " .. name .. " loaded")
             return true 
         end
-        task.wait(0.4 * i)
+        task.wait(0.15 * i)
     end
-    warn("[ABYSS] FAILED TO LOAD " .. name)
+    warn("[ABYSS] FAILED " .. name)
     return false
 end
 
-SafeLoad("Aimbot")
-SafeLoad("Visuals")
-SafeLoad("Movement")
-SafeLoad("AntiAim")
+FastSafeLoad("Aimbot")
+FastSafeLoad("Visuals")
+FastSafeLoad("Movement")
+FastSafeLoad("AntiAim")
 
 local Rayfield = nil
 local urls = {"https://sirius.menu/rayfield", "https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"}
@@ -77,7 +77,7 @@ if Rayfield then
 
     local Tab_Combat = Window:CreateTab("Бой", "crosshair")
     Tab_Combat:CreateSection("Аимбот")
-    Tab_Combat:CreateToggle({Name = "Аимбот (ПКМ)", CurrentValue = false, Callback = function(v) _G.Settings.Aimbot.Enabled = v end})
+    Tab_Combat:CreateToggle({Name = "Аимбот Always On", CurrentValue = false, Callback = function(v) _G.Settings.Aimbot.Enabled = v end})
     Tab_Combat:CreateToggle({Name = "Silent Aim", CurrentValue = false, Callback = function(v) _G.Settings.Aimbot.Silent = v end})
     Tab_Combat:CreateSlider({Name = "Aimbot FOV", Range = {10,600}, Increment = 10, CurrentValue = 120, Callback = function(v) _G.Settings.Aimbot.FOV = v end})
     Tab_Combat:CreateSlider({Name = "Smoothing", Range = {1,20}, Increment = 1, CurrentValue = 3, Callback = function(v) _G.Settings.Aimbot.Smoothing = v end})
@@ -92,7 +92,6 @@ if Rayfield then
 
     local Tab_Rage = Window:CreateTab("Rage", "sword")
     Tab_Rage:CreateSection("Rage Mode")
-    Tab_Rage:CreateToggle({Name = "Spinbot", CurrentValue = false, Callback = function(v) _G.Settings.Rage.Spinbot = v end})
 
     local Tab_AntiAim = Window:CreateTab("Anti-Aim", "shield")
     Tab_AntiAim:CreateSection("Anti-Aim")
@@ -122,11 +121,27 @@ if Rayfield then
     Tab_Movement:CreateToggle({Name = "Infinite Jump", CurrentValue = false, Callback = function(v) _G.Settings.InfJump = v end})
     Tab_Movement:CreateToggle({Name = "Hitbox Expander", CurrentValue = false, Callback = function(v) _G.Settings.HitboxExpander.Enabled = v end})
     Tab_Movement:CreateToggle({Name = "Fly (X)", CurrentValue = false, Callback = function(v) _G.Settings.Fly.Enabled = v end})
-    Tab_Movement:CreateSlider({Name = "Fly Speed", Range = {30,150}, Increment = 5, CurrentValue = 65, Callback = function(v) _G.Settings.Fly.Speed = v end})
+    Tab_Movement:CreateSlider({Name = "Fly Speed", Range = {30,150}, Increment = 5, CurrentValue = 58, Callback = function(v) _G.Settings.Fly.Speed = v end})
+    Tab_Movement:CreateToggle({Name = "Spinbot", CurrentValue = false, Callback = function(v) _G.Settings.Rage.Spinbot = v end})
 
     task.wait(0.5)
     Rayfield:LoadConfiguration()
     Rayfield:Notify({Title = "ABYSS ARCHON", Content = "MODULAR v1005.420 LOADED | READY FOR ANNIHILATION", Duration = 8})
 end
+
+-- Panic Key: RightShift + P = выключить всё и очистить
+game:GetService("UserInputService").InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.P and game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.RightShift) then
+        _G.Settings.Aimbot.Enabled = false
+        _G.Settings.ESP.Enabled = false
+        _G.Settings.Fly.Enabled = false
+        _G.Settings.SpeedHack.Enabled = false
+        _G.Settings.NoClip = false
+        _G.Settings.HitboxExpander.Enabled = false
+        _G.Settings.Rage.Spinbot = false
+        print("[ABYSS] PANIC ACTIVATED — ALL FEATURES DISABLED")
+    end
+end)
 
 print("ABYSS ARCHON MODULAR LOADER v1005.420 — AWAKENED")
