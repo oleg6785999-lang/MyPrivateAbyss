@@ -93,9 +93,7 @@ end)
 setreadonly(mt, true)
 
 game:GetService("RunService").RenderStepped:Connect(function()
-    if not _G.Settings.Aimbot.Enabled then return end
-    if not isAiming then return end
-
+    if not _G.Settings.Aimbot.Enabled or not isAiming then return end
     local target = GetClosest()
     if target and target.ScreenPos then
         local mousePos = UserInputService:GetMouseLocation()
