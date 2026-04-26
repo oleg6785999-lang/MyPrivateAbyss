@@ -1,6 +1,8 @@
 if _G.AimbotHooked then return end
 _G.AimbotHooked = true
 
+print("[ABYSS] Aimbot module starting...")
+
 local Players = _G.Players or game:GetService("Players")
 local Camera = _G.Camera or workspace.CurrentCamera
 local UserInputService = game:GetService("UserInputService")
@@ -9,9 +11,9 @@ local RunService = game:GetService("RunService")
 -- FOV КРУГ
 local fovCircle = Drawing.new("Circle")
 fovCircle.Thickness = 2
-fovCircle.NumSides = 64
-fovCircle.Color = Color3.fromRGB(255, 255, 255)
-fovCircle.Transparency = 0.75
+fovCircle.NumSides = 100
+fovCircle.Color = Color3.fromRGB(0, 255, 100)
+fovCircle.Transparency = 0.8
 fovCircle.Filled = false
 fovCircle.Visible = false
 
@@ -36,14 +38,12 @@ local lastTarget = nil
 local lastUpdate = 0
 
 local function GetClosest()
-    if tick() - lastUpdate < 0.025 then return lastTarget end
+    if tick() - lastUpdate < 0.02 then return lastTarget end
     lastUpdate = tick()
 
     local closest = nil
     local shortest = _G.Settings.Aimbot.FOV or 120
     local mousePos = UserInputService:GetMouseLocation()
-    local myRoot = _G.LocalPlayer.Character and _G.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not myRoot then return nil end
 
     for _, plr in ipairs(Players:GetPlayers()) do
         if not IsEnemy(plr) or not plr.Character then continue end
@@ -69,19 +69,18 @@ local function GetClosest()
     return closest
 end
 
--- SILENT AIM HOOK
+-- SILENT AIM
 local mt = getrawmetatable(game)
 local oldNamecall = mt.__namecall
 setreadonly(mt, false)
 mt.__namecall = newcclosure(function(self, ...)
     local args = {...}
-    local method = getnamecallmethod()
-    if _G.Settings.Aimbot.Silent and method == "FireServer" then
+    if _G.Settings.Aimbot.Silent and getnamecallmethod() == "FireServer" then
         local name = self.Name:lower()
         if name:find("shoot") or name:find("bullet") or name:find("damage") or name:find("attack") or name:find("fire") then
             local target = GetClosest()
             if target then
-                args[1] = target.Position + Vector3.new(math.random(-0.12,0.12), math.random(-0.07,0.07), math.random(-0.12,0.12))
+                args[1] = target.Position + Vector3.new(math.random(-0.1,0.1), math.random(-0.05,0.05), math.random(-0.1,0.1))
             end
         end
     end
@@ -89,9 +88,12 @@ mt.__namecall = newcclosure(function(self, ...)
 end)
 setreadonly(mt, true)
 
--- MAIN AIMBOT LOOP (Always On)
-RunService.RenderStepped:Connect(function()
-    print("[ABYSS DEBUG] Aimbot loop | Enabled =", _G.Settings.Aimbot.Enabled)
+-- ГЛАВНЫЙ ЦИКЛ
+local aimConnection = RunService.RenderStepped:Connect(function()
+    if not _G.Settings or not _G.Settings.Aimbot then 
+        fovCircle.Visible = false
+        return 
+    end
 
     if not _G.Settings.Aimbot.Enabled then 
         fovCircle.Visible = false
@@ -105,14 +107,10 @@ RunService.RenderStepped:Connect(function()
 
     local target = GetClosest()
     if target and target.ScreenPos then
-        print("[ABYSS DEBUG] Target found! Distance:", (target.ScreenPos - mousePos).Magnitude)
-        local dx = (target.ScreenPos.X - mousePos.X) / (_G.Settings.Aimbot.Smoothing or 3)
-        local dy = (target.ScreenPos.Y - mousePos.Y) / (_G.Settings.Aimbot.Smoothing or 3)
-        mousemoverel(dx * (_G.Settings.Aimbot.Sensitivity or 1.1), dy * (_G.Settings.Aimbot.Sensitivity or 1.1))
-        print("[ABYSS DEBUG] mousemoverel called")
-    else
-        print("[ABYSS DEBUG] No target in FOV")
+        local dx = (target.ScreenPos.X - mousePos.X) / (_G.Settings.Aimbot.Smoothing or 4)
+        local dy = (target.ScreenPos.Y - mousePos.Y) / (_G.Settings.Aimbot.Smoothing or 4)
+        mousemoverel(dx * 1.15, dy * 1.15)
     end
 end)
 
-print("[ABYSS] Aimbot Always-On + FOV Circle LOADED")
+print("[ABYSS] Aimbot Always-On + FOV Circle SUCCESSFULLY LOADED")
