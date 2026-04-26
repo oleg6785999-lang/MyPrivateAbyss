@@ -77,9 +77,9 @@ local function ResetHitboxes()
 end
 
 local function UpdateHitbox()
-    if not _G.Settings.HitboxExpander.Enabled then 
+    if not _G.Settings.HitboxExpander.Enabled then
         ResetHitboxes()
-        return 
+        return
     end
     local size = _G.Settings.HitboxExpander.Size or 12
     for _, plr in ipairs(_G.Players:GetPlayers()) do
@@ -95,6 +95,13 @@ local function UpdateHitbox()
         end
     end
 end
+
+_G.LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    ToggleFly(_G.Settings.Fly.Enabled)
+    ToggleNoClip(_G.Settings.NoClip)
+    UpdateHitbox()
+end)
 
 _G.Players.PlayerAdded:Connect(function(plr)
     plr.CharacterAdded:Connect(function()
@@ -127,7 +134,7 @@ RunService.Heartbeat:Connect(function()
         if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.new(0,1,0) end
         if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.new(0,1,0) end
 
-        local speed = _G.Settings.Fly.Speed or 70
+        local speed = _G.Settings.Fly.Speed or 65
         flyLinearVelocity.VectorVelocity = move.Magnitude > 0 and move.Unit * speed or Vector3.new()
         flyAlignOrientation.CFrame = _G.Camera.CFrame
     end
