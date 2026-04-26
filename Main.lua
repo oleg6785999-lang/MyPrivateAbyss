@@ -1,5 +1,5 @@
 _G.Settings = _G.Settings or {
-    Aimbot = {Enabled = false, FOV = 120, Smoothing = 3, Prediction = 0.12, HitboxOffset = 2.5, Sensitivity = 1.2, WallCheck = true, Silent = false},
+    Aimbot = {Enabled = false, FOV = 120, Smoothing = 3, Prediction = 0.12, HitboxOffset = 2.5, Sensitivity = 1.2, WallCheck = true, Silent = false, ActivateButton = "MouseButton1"},
     Rage = {Spinbot = false, SpinSpeed = 25},
     SpeedHack = {Enabled = false, Speed = 50},
     Fly = {Enabled = false, Speed = 58},
@@ -60,6 +60,9 @@ if Rayfield then
     Tab_Combat:CreateToggle({Name = "Silent Aim", CurrentValue = false, Callback = function(v) _G.Settings.Aimbot.Silent = v end})
     Tab_Combat:CreateSlider({Name = "Aimbot FOV", Range = {10,600}, Increment = 10, CurrentValue = 120, Callback = function(v) _G.Settings.Aimbot.FOV = v end})
     Tab_Combat:CreateSlider({Name = "Smoothing", Range = {1,20}, Increment = 1, CurrentValue = 3, Callback = function(v) _G.Settings.Aimbot.Smoothing = v end})
+    Tab_Combat:CreateDropdown({Name = "Кнопка активации", Options = {"ЛКМ", "ПКМ"}, CurrentOption = {"ЛКМ"}, Callback = function(opt)
+        _G.AimbotActivateButton = opt[1] == "ПКМ" and Enum.UserInputType.MouseButton2 or Enum.UserInputType.MouseButton1
+    end})
 
     local Tab_Visuals = Window:CreateTab("Визуал", "eye")
     Tab_Visuals:CreateSection("ESP")
