@@ -62,9 +62,7 @@ local function UpdateAntiAim()
         end
     end
 
-    if _G.Settings.Rage.Spinbot then
-        root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(_G.Settings.Rage.SpinSpeed or 25), 0)
-    elseif _G.Settings.AntiAim.Jitter then
+    if _G.Settings.AntiAim.Jitter then
         local angle = math.rad(math.sin(tick() * 20) * _G.Settings.AntiAim.JitterAngle)
         local rootJoint = root:FindFirstChild("RootJoint")
         if rootJoint and rootJoint:IsA("Motor6D") then
