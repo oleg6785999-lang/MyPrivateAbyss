@@ -8,7 +8,6 @@ local Camera = _G.Camera or workspace.CurrentCamera
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
--- FOV КРУГ
 local fovCircle = Drawing.new("Circle")
 fovCircle.Thickness = 2
 fovCircle.NumSides = 100
@@ -42,8 +41,10 @@ local function GetClosest()
     lastUpdate = tick()
 
     local closest = nil
-    local shortest = _G.Settings.Aimbot.FOV or 120
+    local shortest = math.huge
     local mousePos = UserInputService:GetMouseLocation()
+    local fov = _G.Settings.Aimbot.FOV or 120
+    local fovRad = math.rad(fov / 2)
 
     for _, plr in ipairs(Players:GetPlayers()) do
         if not IsEnemy(plr) or not plr.Character then continue end
@@ -57,8 +58,12 @@ local function GetClosest()
 
         local predicted = targetPos + (root.AssemblyLinearVelocity or Vector3.new()) * (_G.Settings.Aimbot.Prediction or 0.12)
         local sp, onScreen = Camera:WorldToViewportPoint(predicted)
-        if onScreen then
-            local d = (Vector2.new(sp.X, sp.Y) - mousePos).Magnitude
+        if not onScreen then continue end
+
+        local d = (Vector2.new(sp.X, sp.Y) - mousePos).Magnitude
+        local angle = math.acos(Camera.CFrame.LookVector:Dot((predicted - Camera.CFrame.Position).Unit))
+
+        if angle <= fovRad or d <= fov then
             if d < shortest then
                 shortest = d
                 closest = {Position = predicted, ScreenPos = Vector2.new(sp.X, sp.Y)}
@@ -69,7 +74,6 @@ local function GetClosest()
     return closest
 end
 
--- SILENT AIM
 local mt = getrawmetatable(game)
 local oldNamecall = mt.__namecall
 setreadonly(mt, false)
@@ -80,7 +84,13 @@ mt.__namecall = newcclosure(function(self, ...)
         if name:find("shoot") or name:find("bullet") or name:find("damage") or name:find("attack") or name:find("fire") then
             local target = GetClosest()
             if target then
-                args[1] = target.Position + Vector3.new(math.random(-0.1,0.1), math.random(-0.05,0.05), math.random(-0.1,0.1))
+                local direction = (target.Position - Camera.CFrame.Position).Unit
+                for i, arg in ipairs(args) do
+                    if typeof(arg) == "Vector3" and arg.Magnitude > 0.1 then
+                        args[i] = direction
+                        break
+                    end
+                end
             end
         end
     end
@@ -88,14 +98,8 @@ mt.__namecall = newcclosure(function(self, ...)
 end)
 setreadonly(mt, true)
 
--- ГЛАВНЫЙ ЦИКЛ
-local aimConnection = RunService.RenderStepped:Connect(function()
-    if not _G.Settings or not _G.Settings.Aimbot then 
-        fovCircle.Visible = false
-        return 
-    end
-
-    if not _G.Settings.Aimbot.Enabled then 
+RunService.RenderStepped:Connect(function()
+    if not _G.Settings or not _G.Settings.Aimbot or not _G.Settings.Aimbot.Enabled then 
         fovCircle.Visible = false
         return 
     end
@@ -105,12 +109,26 @@ local aimConnection = RunService.RenderStepped:Connect(function()
     fovCircle.Radius = _G.Settings.Aimbot.FOV or 120
     fovCircle.Visible = true
 
+    local activateButton = Enum.UserInputType.MouseButton1
+    if not UserInputService:IsMouseButtonPressed(activateButton) then
+        return
+    end
+
     local target = GetClosest()
     if target and target.ScreenPos then
-        local dx = (target.ScreenPos.X - mousePos.X) / (_G.Settings.Aimbot.Smoothing or 4)
-        local dy = (target.ScreenPos.Y - mousePos.Y) / (_G.Settings.Aimbot.Smoothing or 4)
-        mousemoverel(dx * 1.15, dy * 1.15)
+        local camPos = Camera.CFrame.Position
+        local targetPos = target.Position
+
+        local currentLook = Camera.CFrame.LookVector
+        local desiredLook = (targetPos - camPos).Unit
+
+        local sensitivity = _G.Settings.Aimbot.Sensitivity or 1.2
+        local smoothing = _G.Settings.Aimbot.Smoothing or 4
+        local lerpFactor = (1 / smoothing) * sensitivity
+
+        local newLook = currentLook:Lerp(desiredLook, lerpFactor)
+        Camera.CFrame = CFrame.new(camPos, camPos + newLook)
     end
 end)
 
-print("[ABYSS] Aimbot Always-On + FOV Circle SUCCESSFULLY LOADED")
+print("[ABYSS] Aimbot Always-On + Camera Aim + Real FOV + Smart Silent LOADED")
