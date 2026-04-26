@@ -21,27 +21,6 @@ _G.LocalPlayer = _G.Players.LocalPlayer
 
 local baseUrl = "https://raw.githubusercontent.com/oleg6785999-lang/MyPrivateAbyss/main/"
 
-local function FastSafeLoad(name)
-    for i = 1, 4 do
-        local success = pcall(function()
-            loadstring(game:HttpGet(baseUrl .. name .. ".lua", true))()
-        end)
-        if success then 
-            print("[ABYSS] " .. name .. " loaded")
-            return true 
-        end
-        task.wait(0.15 * i)
-    end
-    warn("[ABYSS] FAILED " .. name)
-    return false
-end
-
--- Загружаем модули
-FastSafeLoad("Aimbot")
-FastSafeLoad("Visuals")
-FastSafeLoad("Movement")
-FastSafeLoad("AntiAim")
-
 local Rayfield = nil
 local urls = {"https://sirius.menu/rayfield", "https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"}
 
@@ -127,6 +106,31 @@ if Rayfield then
     task.wait(0.5)
     Rayfield:LoadConfiguration()
     Rayfield:Notify({Title = "ABYSS ARCHON", Content = "MODULAR v1005.420 LOADED | READY FOR ANNIHILATION", Duration = 8})
+
+    -- ЗАГРУЗКА МОДУЛЕЙ ТОЛЬКО ПОСЛЕ UI
+    local function FastSafeLoad(name)
+        for i = 1, 4 do
+            local success = pcall(function()
+                loadstring(game:HttpGet(baseUrl .. name .. ".lua", true))()
+            end)
+            if success then 
+                print("[ABYSS] " .. name .. " loaded")
+                return true 
+            end
+            task.wait(0.15 * i)
+        end
+        warn("[ABYSS] FAILED " .. name)
+        return false
+    end
+
+    FastSafeLoad("Aimbot")
+    FastSafeLoad("Visuals")
+    FastSafeLoad("Movement")
+    FastSafeLoad("AntiAim")
+
+    task.wait(0.6)
+    print("[ABYSS] Forcing Aimbot refresh...")
+    _G.Settings.Aimbot.Enabled = _G.Settings.Aimbot.Enabled
 end
 
 print("ABYSS ARCHON MODULAR LOADER v1005.420 — AWAKENED")
