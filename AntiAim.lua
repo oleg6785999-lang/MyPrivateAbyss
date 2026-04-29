@@ -1,84 +1,109 @@
+-- === ЗАМЕНИ ЭТОТ ФАЙЛ НА ПОЛНОСТЬЮ ===
+-- FILENAME: AntiAim.lua
 -- ============================================================
--- 5.lua / AntiAim.lua  — ABYSS ARCHON / Modular
--- Modern AntiAim:
---   - Jitter (RootJoint.C0, modes: Random / Sine / Static)
---   - Desync (AlignOrientation, modes: Static / Spin / Random / Switch / Backwards)
---   - HideHead (Neck.C0, modes: Back / Down / Offset)
---   - FakeLag (Anchor + Humanoid:ChangeState(Physics) + buffered CFrame teleport)
---   - Visualizer (Drawing line/circle/text — реальный угол тела на сервере)
--- Конфликт со Spinbot решён в Movement.lua (Spinbot уступает Desync).
+-- AntiAim.lua — ABYSS ARCHON / Modular  (v4 ELITE)
+-- Современные методы 2026:
+--   Desync   : RootJoint.C0 + LowerTorso.Root.C0 (R15 twist)
+--              + buffered CFrame teleport-loop (real server-side)
+--              БЕЗ AlignOrientation
+--   FakeLag  : velocity freeze (no Anchor!) + Humanoid Physics state
+--              modes: Static / Random / Adaptive / Switch
+--   Jitter   : Sine / RandomWalk / Flick / Static / CustomPattern
+--   HideHead : Neck.C0 rotation + Neck.C1 translate (extra effect)
+--   Visualizer: реальный (HRP.LookVector) vs fake угол на экране
+--   ResolverBypass: micro-jitter (anti-snap heuristic)
+--   Predictor: bias desync против hum.MoveDirection
+--
+-- Конфликт-guard: skip CFrame/velocity ops при активном Fly;
+-- Spinbot гасится в Movement.lua когда Desync включён.
 -- ============================================================
 
 local Players    = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
-----------------------------------------------------------------
--- 1. Защита от повторной загрузки
-----------------------------------------------------------------
 if _G.ABYSS_AntiAim and type(_G.ABYSS_AntiAim.Disconnect) == "function" then
     pcall(_G.ABYSS_AntiAim.Disconnect)
 end
 _G.ABYSS_AntiAim = nil
 
 ----------------------------------------------------------------
--- 2. Settings + дефолты (мерж с существующими)
+-- Settings (defensive merge)
 ----------------------------------------------------------------
 _G.Settings = _G.Settings or {}
 local A = _G.Settings.AntiAim or {}
 
-if A.Jitter         == nil then A.Jitter         = false end
-if A.Desync         == nil then A.Desync         = false end
-if A.HideHead       == nil then A.HideHead       = false end
-if A.FakeLag        == nil then A.FakeLag        = false end
-if A.FakeLagNoClip  == nil then A.FakeLagNoClip  = true  end
-if A.Visualizer     == nil then A.Visualizer     = false end
+if A.Jitter             == nil then A.Jitter             = false end
+if A.Desync             == nil then A.Desync             = false end
+if A.HideHead           == nil then A.HideHead           = false end
+if A.FakeLag            == nil then A.FakeLag            = false end
+if A.FakeLagBackForth   == nil then A.FakeLagBackForth   = false end
+if A.Visualizer         == nil then A.Visualizer         = false end
+if A.ResolverBypass     == nil then A.ResolverBypass     = false end
+if A.Predictor          == nil then A.Predictor          = false end
+if A.DesyncBufferTeleport == nil then A.DesyncBufferTeleport = false end
 
+A.JitterMode       = A.JitterMode       or "Sine"      -- Sine/RandomWalk/Flick/Static/CustomPattern
 A.JitterAngle      = tonumber(A.JitterAngle)      or 40
-A.JitterMode       = A.JitterMode                 or "Random"   -- Random / Sine / Static
-A.DesyncType       = A.DesyncType                 or "Spin"     -- Static / Spin / Random / Switch / Backwards
+A.JitterSpeed      = tonumber(A.JitterSpeed)      or 12
+A.JitterPattern    = A.JitterPattern    or { 1, -1, 0.5, -0.5 }
+
+A.DesyncMode       = A.DesyncMode       or "Spin"      -- Static/Spin/Random/Switch/Backwards
+A.DesyncStrength   = tonumber(A.DesyncStrength)   or 1.0
 A.DesyncSpeed      = tonumber(A.DesyncSpeed)      or 30
-A.DesyncStrength   = tonumber(A.DesyncStrength)   or 1.0        -- 0..1
-A.HideHeadMode     = A.HideHeadMode               or "Back"     -- Back / Down / Offset
+
+A.HideHeadMode     = A.HideHeadMode     or "Back"      -- Back/Down/Offset/Spin
+A.HideHeadOffset   = tonumber(A.HideHeadOffset)   or 1.5
+
+A.FakeLagMode      = A.FakeLagMode      or "Static"    -- Static/Random/Adaptive/Switch
 A.FakeLagIntensity = tonumber(A.FakeLagIntensity) or 5
 A.FakeLagFrequency = tonumber(A.FakeLagFrequency) or 1
-A.FakeLagMode      = A.FakeLagMode                or "Random"   -- Random / BackAndForth
+
+A.MicroJitterAngle = tonumber(A.MicroJitterAngle) or 0.05
+A.PredictorAngle   = tonumber(A.PredictorAngle)   or 15
 
 _G.Settings.AntiAim = A
 
 local LocalPlayer = Players.LocalPlayer
+local connections = {}
 
 ----------------------------------------------------------------
--- 3. State
+-- State
 ----------------------------------------------------------------
-local connections   = {}
 local STEP_NAME_VIS = "ABYSS_AntiAimVis"
 
-local originalRootC0 = nil
-local originalNeckC0 = nil
+local originalRootC0  = nil
+local originalNeckC0  = nil
+local originalNeckC1  = nil
+local originalLowerC0 = nil
 
-local desyncAtt   = nil
-local desyncAlign = nil
+-- Jitter state
+local jitterRandWalk    = 0
+local jitterPatternIdx  = 1
+local jitterPatternTime = 0
 
--- FakeLag
-local fl = {
-    accumulator              = 0,
-    isLagging                = false,
-    bufferedCFrame           = nil,
-    originalAnchored         = nil,
-    noclipApplied            = false,
-    noclipCanCollideOriginal = setmetatable({}, { __mode = "k" }),
-}
-
--- Desync Switch state
+-- Desync state
 local switchSide  = 1
 local lastSwitchT = 0
 
--- Visualizer
-local viz = { line = nil, circle = nil, text = nil }
+-- Buffered CFrame teleport state
+local lastBufferT  = 0
+local bufferPhase  = 0  -- 0 = idle, 1 = teleport sent (rewinding)
+local bufferOrigCF = nil
+
+-- FakeLag state
+local fl = {
+    phase           = "release",  -- "release" or "lag"
+    accumulator     = 0,
+    bufferedCFrame  = nil,
+    pulseCount      = 0,
+}
+
+-- Visualizer drawings
+local viz = { realLine = nil, fakeLine = nil, circle = nil, text = nil }
 local drawingAvailable = type(Drawing) == "table" and type(Drawing.new) == "function"
 
 ----------------------------------------------------------------
--- 4. Utility
+-- Utility
 ----------------------------------------------------------------
 local function GetCharRig()
     local char = LocalPlayer.Character
@@ -93,6 +118,17 @@ local function GetRootJoint(root)
     if not root then return nil end
     local j = root:FindFirstChild("RootJoint")
     if j and j:IsA("Motor6D") then return j end
+    return nil
+end
+
+local function GetLowerJoint(char)
+    if not char then return nil end
+    local lt = char:FindFirstChild("LowerTorso")
+    if not lt then return nil end
+    -- R15: внутри LowerTorso есть Motor6D "Root" что соединяет с UpperTorso? Нет.
+    -- Реально LowerTorso имеет "Waist" Motor6D, соединяющий с UpperTorso.
+    local waist = lt:FindFirstChild("Waist")
+    if waist and waist:IsA("Motor6D") then return waist end
     return nil
 end
 
@@ -113,106 +149,178 @@ local function GetNeck(char)
     return nil
 end
 
+local function FlyActive()
+    return _G.Settings.Fly and _G.Settings.Fly.Enabled
+end
+
 ----------------------------------------------------------------
--- 5. Jitter (RootJoint.C0, всегда от originalRootC0)
+-- Jitter angle compute (per mode)
 ----------------------------------------------------------------
-local function ApplyJitter()
-    local _, _, root = GetCharRig()
-    if not root then return end
-    local joint = GetRootJoint(root)
-    if not joint then return end
-
-    if not originalRootC0 then originalRootC0 = joint.C0 end
-
-    if not A.Jitter then
-        if joint.C0 ~= originalRootC0 then joint.C0 = originalRootC0 end
-        return
-    end
-
+local function ComputeJitterAngle()
+    if not A.Jitter then return 0 end
     local maxAng = math.rad(A.JitterAngle or 40)
-    local angle  = 0
-    local mode   = A.JitterMode
+    local mode   = A.JitterMode or "Sine"
+    local speed  = A.JitterSpeed or 12
 
     if mode == "Sine" then
-        angle = math.sin(tick() * 12) * maxAng
+        return math.sin(tick() * speed) * maxAng
     elseif mode == "Static" then
-        angle = maxAng
-    else  -- Random
-        angle = (math.random() * 2 - 1) * maxAng
+        return maxAng
+    elseif mode == "Flick" then
+        local phase = math.floor(tick() * speed) % 2
+        return (phase == 0) and maxAng or -maxAng
+    elseif mode == "RandomWalk" then
+        jitterRandWalk = jitterRandWalk + (math.random() - 0.5) * 0.15
+        if jitterRandWalk >  1 then jitterRandWalk =  1 end
+        if jitterRandWalk < -1 then jitterRandWalk = -1 end
+        return jitterRandWalk * maxAng
+    elseif mode == "CustomPattern" then
+        local pat = A.JitterPattern
+        if not pat or #pat == 0 then return 0 end
+        local now = tick()
+        if now - jitterPatternTime > 0.15 then
+            jitterPatternIdx  = (jitterPatternIdx % #pat) + 1
+            jitterPatternTime = now
+        end
+        return (pat[jitterPatternIdx] or 0) * maxAng
     end
-
-    joint.C0 = originalRootC0 * CFrame.Angles(0, angle, 0)
+    return (math.random() * 2 - 1) * maxAng
 end
 
 ----------------------------------------------------------------
--- 6. Desync (AlignOrientation на Y-оси)
+-- Desync angle compute (per mode)
 ----------------------------------------------------------------
-local function EnsureDesyncRig()
-    local _, _, root = GetCharRig()
-    if not root then return end
-    if desyncAtt and desyncAtt.Parent == root
-       and desyncAlign and desyncAlign.Parent then return end
-
-    if desyncAlign then pcall(function() desyncAlign:Destroy() end); desyncAlign = nil end
-    if desyncAtt   then pcall(function() desyncAtt:Destroy()   end); desyncAtt   = nil end
-
-    desyncAtt = Instance.new("Attachment")
-    desyncAtt.Name   = "ABYSS_DesyncAtt"
-    desyncAtt.Parent = root
-
-    desyncAlign = Instance.new("AlignOrientation")
-    desyncAlign.Name             = "ABYSS_DesyncAlign"
-    desyncAlign.Mode             = Enum.OrientationAlignmentMode.OneAttachment
-    desyncAlign.Attachment0      = desyncAtt
-    desyncAlign.MaxTorque        = math.huge
-    desyncAlign.Responsiveness   = 200
-    desyncAlign.RigidityEnabled  = false
-    desyncAlign.Parent           = root
-end
-
-local function DestroyDesyncRig()
-    if desyncAlign then pcall(function() desyncAlign:Destroy() end); desyncAlign = nil end
-    if desyncAtt   then pcall(function() desyncAtt:Destroy()   end); desyncAtt   = nil end
-end
-
-local function ApplyDesync()
-    if not A.Desync then
-        DestroyDesyncRig()
-        return
-    end
-
-    local _, _, root = GetCharRig()
-    if not root then return end
-
-    EnsureDesyncRig()
-    if not desyncAlign then return end
-
+local function ComputeDesyncAngle()
+    if not A.Desync then return 0 end
     local strength = math.clamp(A.DesyncStrength or 1, 0, 1)
-    local mode     = A.DesyncType
-    local rot      = 0
+    local mode     = A.DesyncMode or "Spin"
 
     if mode == "Static" then
-        rot = math.rad(60) * strength
+        return math.rad(60) * strength
     elseif mode == "Spin" then
-        rot = math.rad(tick() * (A.DesyncSpeed or 30)) * strength
+        return math.rad(tick() * (A.DesyncSpeed or 30)) * strength
     elseif mode == "Random" then
-        rot = (math.random() * 2 - 1) * math.rad(120) * strength
+        return (math.random() * 2 - 1) * math.rad(120) * strength
     elseif mode == "Switch" then
         local interval = 1 / math.max((A.DesyncSpeed or 30) / 10, 0.5)
         if tick() - lastSwitchT > interval then
-            switchSide = -switchSide
+            switchSide  = -switchSide
             lastSwitchT = tick()
         end
-        rot = math.rad(60) * strength * switchSide
+        return math.rad(60) * strength * switchSide
     elseif mode == "Backwards" then
-        rot = math.rad(180) * strength
+        return math.rad(180) * strength
     end
-
-    desyncAlign.CFrame = CFrame.Angles(0, rot, 0)
+    return 0
 end
 
 ----------------------------------------------------------------
--- 7. HideHead (Neck.C0 + offset translation в режиме Offset)
+-- Resolver bypass micro-jitter
+----------------------------------------------------------------
+local function GetMicroJitter()
+    if not A.ResolverBypass then return 0 end
+    return (math.random() - 0.5) * 2 * (A.MicroJitterAngle or 0.05)
+end
+
+----------------------------------------------------------------
+-- Predictor: bias desync против движения
+----------------------------------------------------------------
+local function GetPredictorBias()
+    if not A.Predictor then return 0 end
+    local _, hum = GetCharRig()
+    if not hum then return 0 end
+    local md = hum.MoveDirection
+    if md.Magnitude < 0.1 then return 0 end
+    local cam = workspace.CurrentCamera
+    if not cam then return 0 end
+    local dot = md:Dot(cam.CFrame.RightVector)
+    if math.abs(dot) < 0.1 then return 0 end
+    return -math.sign(dot) * math.rad(A.PredictorAngle or 15)
+end
+
+----------------------------------------------------------------
+-- Apply combined angles to RootJoint.C0 + LowerTorso.Waist.C0
+----------------------------------------------------------------
+local function ApplyAngles()
+    local char, _, root = GetCharRig()
+    if not root then return end
+    local joint = GetRootJoint(root)
+    if not joint then return end
+    if not originalRootC0 then originalRootC0 = joint.C0 end
+
+    local jit   = ComputeJitterAngle()
+    local des   = ComputeDesyncAngle()
+    local bias  = GetPredictorBias()
+    local micro = GetMicroJitter()
+    local total = jit + des + bias + micro
+
+    if not A.Jitter and not A.Desync and not A.ResolverBypass and not A.Predictor then
+        if joint.C0 ~= originalRootC0 then joint.C0 = originalRootC0 end
+        if originalLowerC0 then
+            local waist = GetLowerJoint(char)
+            if waist and waist.C0 ~= originalLowerC0 then waist.C0 = originalLowerC0 end
+            originalLowerC0 = nil
+        end
+        return
+    end
+
+    joint.C0 = originalRootC0 * CFrame.Angles(0, total, 0)
+
+    -- LowerTorso twist (R15 extra) — половинная амплитуда desync для torso splitting
+    if A.Desync then
+        local waist = GetLowerJoint(char)
+        if waist then
+            if not originalLowerC0 then originalLowerC0 = waist.C0 end
+            waist.C0 = originalLowerC0 * CFrame.Angles(0, des * 0.5, 0)
+        end
+    elseif originalLowerC0 then
+        local waist = GetLowerJoint(char)
+        if waist and waist.C0 ~= originalLowerC0 then waist.C0 = originalLowerC0 end
+        originalLowerC0 = nil
+    end
+end
+
+----------------------------------------------------------------
+-- Buffered CFrame teleport-loop (real server-side desync)
+-- Каждые ~100мс: телепорт на смещение → следующий тик возврат.
+-- Skip при FlyActive.
+----------------------------------------------------------------
+local function ApplyBufferTeleport()
+    if not A.Desync or not A.DesyncBufferTeleport then
+        bufferPhase  = 0
+        bufferOrigCF = nil
+        return
+    end
+    if FlyActive() then return end
+
+    local _, _, root = GetCharRig()
+    if not root then return end
+
+    local now = tick()
+    if bufferPhase == 0 then
+        if now - lastBufferT > 0.1 then
+            bufferOrigCF = root.CFrame
+            local off = CFrame.new(
+                (math.random() - 0.5) * 4,
+                0,
+                (math.random() - 0.5) * 4
+            )
+            pcall(function() root.CFrame = bufferOrigCF * off end)
+            bufferPhase = 1
+            lastBufferT = now
+        end
+    else
+        -- следующий тик: вернули позицию назад (server увидел fake → real)
+        if bufferOrigCF then
+            pcall(function() root.CFrame = bufferOrigCF end)
+        end
+        bufferOrigCF = nil
+        bufferPhase  = 0
+    end
+end
+
+----------------------------------------------------------------
+-- HideHead (Neck.C0 + Neck.C1 offset)
 ----------------------------------------------------------------
 local function ApplyHideHead()
     local char = LocalPlayer.Character
@@ -225,219 +333,231 @@ local function ApplyHideHead()
             if neck.C0 ~= originalNeckC0 then neck.C0 = originalNeckC0 end
             originalNeckC0 = nil
         end
+        if originalNeckC1 then
+            if neck.C1 ~= originalNeckC1 then neck.C1 = originalNeckC1 end
+            originalNeckC1 = nil
+        end
         return
     end
 
     if not originalNeckC0 then originalNeckC0 = neck.C0 end
+    if not originalNeckC1 then originalNeckC1 = neck.C1 end
 
-    local mode = A.HideHeadMode
+    local mode = A.HideHeadMode or "Back"
+    local off  = A.HideHeadOffset or 1.5
+
     if mode == "Down" then
         neck.C0 = originalNeckC0 * CFrame.Angles(math.rad(-90), 0, 0)
     elseif mode == "Offset" then
-        -- Combined: rotate 180° + translate down (visual head внутри тела)
-        neck.C0 = originalNeckC0 * CFrame.new(0, -1.5, 0) * CFrame.Angles(0, math.rad(180), 0)
-    else  -- Back (default)
+        neck.C0 = originalNeckC0 * CFrame.new(0, -off, 0) * CFrame.Angles(0, math.rad(180), 0)
+    elseif mode == "Spin" then
+        neck.C0 = originalNeckC0 * CFrame.Angles(0, tick() * 6, 0)
+    else  -- Back
         neck.C0 = originalNeckC0 * CFrame.Angles(0, math.rad(180), 0)
     end
+
+    -- Дополнительный translate головы через Neck.C1 (head local frame)
+    neck.C1 = originalNeckC1 * CFrame.new(0, off * 0.5, 0)
 end
 
 ----------------------------------------------------------------
--- 8. FakeLag — controlled latency simulation
---    Trick: периодически Anchor + Humanoid:ChangeState(Physics)
---    замораживает реплицируемую позицию HRP, потом резкое release.
---    Optional NoClip на время лаг-фазы (FakeLagNoClip).
---    BackAndForth — телепорт обратно в буферизованный CFrame на release.
+-- FakeLag — velocity freeze (no Anchor!)
 ----------------------------------------------------------------
-local function ApplyFakeLagNoClip(enable)
-    local char = LocalPlayer.Character
-    if not char then return end
-    if enable then
-        for _, p in ipairs(char:GetDescendants()) do
-            if p:IsA("BasePart") and p.CanCollide then
-                fl.noclipCanCollideOriginal[p] = p.CanCollide
-                p.CanCollide = false
-            end
-        end
-        fl.noclipApplied = true
-    else
-        for p, cc in pairs(fl.noclipCanCollideOriginal) do
-            pcall(function() p.CanCollide = cc end)
-        end
-        table.clear(fl.noclipCanCollideOriginal)
-        fl.noclipApplied = false
-    end
-end
-
-local function StartFakeLag()
-    local _, hum, root = GetCharRig()
-    if not root or not hum then return end
-    if fl.isLagging then return end
-
-    fl.bufferedCFrame   = root.CFrame
-    fl.originalAnchored = root.Anchored
-
+local function StartLag(root, hum)
+    fl.bufferedCFrame = root.CFrame
     pcall(function()
-        if A.FakeLagNoClip then ApplyFakeLagNoClip(true) end
+        root.AssemblyLinearVelocity  = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
         hum:ChangeState(Enum.HumanoidStateType.Physics)
-        root.Anchored = true
     end)
-    fl.isLagging = true
+    fl.phase = "lag"
 end
 
-local function StopFakeLag()
-    local _, hum, root = GetCharRig()
-    if not root or not hum then return end
-    if not fl.isLagging then return end
-
+local function StopLag(root, hum)
     pcall(function()
-        root.Anchored = fl.originalAnchored or false
         hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-        if fl.noclipApplied then ApplyFakeLagNoClip(false) end
     end)
-
-    if A.FakeLagMode == "BackAndForth" and fl.bufferedCFrame then
+    if A.FakeLagBackForth and fl.bufferedCFrame then
         pcall(function() root.CFrame = fl.bufferedCFrame end)
     end
-
-    fl.bufferedCFrame   = nil
-    fl.originalAnchored = nil
-    fl.isLagging        = false
+    fl.bufferedCFrame = nil
+    fl.phase = "release"
 end
 
 local function ApplyFakeLag(dt)
-    if not A.FakeLag then
-        if fl.isLagging then StopFakeLag() end
+    if not A.FakeLag or FlyActive() then
+        if fl.phase == "lag" then
+            local _, hum, root = GetCharRig()
+            if root and hum then StopLag(root, hum) end
+        end
         fl.accumulator = 0
         return
     end
 
     local _, hum, root = GetCharRig()
     if not hum or not root then return end
-
     fl.accumulator = fl.accumulator + dt
-    local frequency  = math.clamp(A.FakeLagFrequency or 1, 0.1, 10)
-    local intensity  = math.clamp(A.FakeLagIntensity or 5, 1, 30) / 60  -- сек активного lag
-    local cycle      = 1 / frequency
-    local lagPhase   = math.min(intensity, cycle * 0.7)
-    local releaseT   = cycle - lagPhase
 
-    if not fl.isLagging then
-        if fl.accumulator >= releaseT then
-            StartFakeLag()
-            fl.accumulator = 0
-        end
+    -- Cycle params per mode
+    local intensity, frequency
+    local mode = A.FakeLagMode or "Static"
+    if mode == "Static" then
+        intensity = (A.FakeLagIntensity or 5) / 60
+        frequency = A.FakeLagFrequency or 1
+    elseif mode == "Random" then
+        intensity = math.random(2, math.max(A.FakeLagIntensity or 5, 3)) / 60
+        frequency = math.random() * 2 + 0.5
+    elseif mode == "Adaptive" then
+        local v = root.AssemblyLinearVelocity.Magnitude
+        local scale = math.clamp(v / 30, 0.3, 1)
+        intensity = ((A.FakeLagIntensity or 5) / 60) * scale
+        frequency = A.FakeLagFrequency or 1
+    elseif mode == "Switch" then
+        intensity = (fl.pulseCount % 2 == 0) and 0.05 or 0.15
+        frequency = A.FakeLagFrequency or 1
     else
-        if fl.accumulator >= lagPhase then
-            StopFakeLag()
+        intensity = (A.FakeLagIntensity or 5) / 60
+        frequency = A.FakeLagFrequency or 1
+    end
+
+    local cycle      = 1 / math.max(frequency, 0.1)
+    local lagPhase   = math.min(intensity, cycle * 0.7)
+    local releasePhT = cycle - lagPhase
+
+    if fl.phase == "release" then
+        if fl.accumulator >= releasePhT then
+            StartLag(root, hum)
             fl.accumulator = 0
+            fl.pulseCount  = fl.pulseCount + 1
+        end
+    else  -- lag
+        if fl.accumulator >= lagPhase then
+            StopLag(root, hum)
+            fl.accumulator = 0
+        else
+            -- maintain freeze each frame (game/physics могут вернуть velocity)
+            pcall(function()
+                root.AssemblyLinearVelocity  = Vector3.zero
+                root.AssemblyAngularVelocity = Vector3.zero
+            end)
         end
     end
 end
 
 ----------------------------------------------------------------
--- 9. Visualizer (Drawing line/circle/text)
+-- Visualizer (Drawing line + circle + text)
 ----------------------------------------------------------------
-local function EnsureVisualizer()
+local function EnsureViz()
     if not drawingAvailable then return end
-    if not viz.line then
+    if not viz.realLine then
         local ok, l = pcall(Drawing.new, "Line")
-        if ok and l then
-            viz.line = l
-            l.Thickness = 2
-            l.Color     = Color3.fromRGB(255, 80, 80)
-            l.Visible   = false
-        end
+        if ok and l then viz.realLine = l; l.Thickness = 2; l.Color = Color3.fromRGB(255, 50, 50); l.Visible = false end
+    end
+    if not viz.fakeLine then
+        local ok, l = pcall(Drawing.new, "Line")
+        if ok and l then viz.fakeLine = l; l.Thickness = 2; l.Color = Color3.fromRGB(50, 255, 50); l.Visible = false end
     end
     if not viz.circle then
         local ok, c = pcall(Drawing.new, "Circle")
         if ok and c then
-            viz.circle = c
-            c.Thickness = 2
-            c.NumSides  = 32
-            c.Filled    = false
-            c.Color     = Color3.fromRGB(80, 255, 80)
-            c.Visible   = false
+            viz.circle = c; c.Thickness = 2; c.NumSides = 32; c.Filled = false
+            c.Color = Color3.fromRGB(80, 80, 255); c.Visible = false
         end
     end
     if not viz.text then
         local ok, t = pcall(Drawing.new, "Text")
         if ok and t then
-            viz.text = t
-            t.Size    = 14
-            t.Color   = Color3.fromRGB(255, 255, 255)
-            t.Outline = true
-            t.Center  = true
-            t.Visible = false
+            viz.text = t; t.Size = 13; t.Color = Color3.fromRGB(255, 255, 255)
+            t.Outline = true; t.Center = true; t.Visible = false
         end
     end
 end
 
-local function HideVisualizer()
-    if viz.line   then viz.line.Visible   = false end
-    if viz.circle then viz.circle.Visible = false end
-    if viz.text   then viz.text.Visible   = false end
+local function HideViz()
+    if viz.realLine then viz.realLine.Visible = false end
+    if viz.fakeLine then viz.fakeLine.Visible = false end
+    if viz.circle   then viz.circle.Visible   = false end
+    if viz.text     then viz.text.Visible     = false end
 end
 
-local function DestroyVisualizer()
-    if viz.line   then pcall(function() viz.line:Remove()   end); viz.line   = nil end
-    if viz.circle then pcall(function() viz.circle:Remove() end); viz.circle = nil end
-    if viz.text   then pcall(function() viz.text:Remove()   end); viz.text   = nil end
+local function DestroyViz()
+    if viz.realLine then pcall(function() viz.realLine:Remove() end); viz.realLine = nil end
+    if viz.fakeLine then pcall(function() viz.fakeLine:Remove() end); viz.fakeLine = nil end
+    if viz.circle   then pcall(function() viz.circle:Remove()   end); viz.circle   = nil end
+    if viz.text     then pcall(function() viz.text:Remove()     end); viz.text     = nil end
 end
 
 local function UpdateVisualizer()
     if not drawingAvailable then return end
-    if not A.Visualizer then HideVisualizer(); return end
-
-    EnsureVisualizer()
+    if not A.Visualizer then HideViz(); return end
+    EnsureViz()
 
     local _, _, root = GetCharRig()
-    if not root then HideVisualizer(); return end
+    if not root then HideViz(); return end
     local cam = workspace.CurrentCamera
-    if not cam then HideVisualizer(); return end
+    if not cam then HideViz(); return end
 
-    -- Реальный (server-side) угол: HRP.CFrame * desyncAlign rotation
-    local realCFrame = root.CFrame
-    if A.Desync and desyncAlign then
-        realCFrame = CFrame.new(root.Position) * desyncAlign.CFrame
-    end
+    -- "real" — server видит HRP.LookVector (оригинал), потому что C0 — visual-only.
+    -- "fake" — то, куда визуально смотрит client (HRP * total Y rotation).
+    local realLook = root.CFrame.LookVector
+    local fakeAng  = ComputeJitterAngle() + ComputeDesyncAngle()
+                   + GetPredictorBias() + GetMicroJitter()
+    local fakeLook = (root.CFrame * CFrame.Angles(0, fakeAng, 0)).LookVector
 
-    local headPos = root.Position + Vector3.new(0, 3, 0)
-    local lookPos = root.Position + realCFrame.LookVector * 4
+    local headWorld = root.Position + Vector3.new(0, 3, 0)
+    local realPt    = root.Position + realLook * 5
+    local fakePt    = root.Position + fakeLook * 5
 
-    local hSp = cam:WorldToViewportPoint(headPos)
-    local lSp = cam:WorldToViewportPoint(lookPos)
+    local hSp = cam:WorldToViewportPoint(headWorld)
+    local rSp = cam:WorldToViewportPoint(realPt)
+    local fSp = cam:WorldToViewportPoint(fakePt)
 
-    if hSp.Z > 0 and lSp.Z > 0 then
-        if viz.line then
-            viz.line.From    = Vector2.new(hSp.X, hSp.Y)
-            viz.line.To      = Vector2.new(lSp.X, lSp.Y)
-            viz.line.Visible = true
-        end
+    if hSp.Z > 0 then
+        local headV2 = Vector2.new(hSp.X, hSp.Y)
+
+        if rSp.Z > 0 and viz.realLine then
+            viz.realLine.From = headV2
+            viz.realLine.To   = Vector2.new(rSp.X, rSp.Y)
+            viz.realLine.Visible = true
+        elseif viz.realLine then viz.realLine.Visible = false end
+
+        if fSp.Z > 0 and viz.fakeLine then
+            viz.fakeLine.From = headV2
+            viz.fakeLine.To   = Vector2.new(fSp.X, fSp.Y)
+            viz.fakeLine.Visible = true
+        elseif viz.fakeLine then viz.fakeLine.Visible = false end
+
         if viz.circle then
-            viz.circle.Position = Vector2.new(hSp.X, hSp.Y)
+            viz.circle.Position = headV2
             viz.circle.Radius   = 8
+            viz.circle.Color    = (fl.phase == "lag")
+                                  and Color3.fromRGB(255, 200, 50)
+                                  or  Color3.fromRGB(80, 80, 255)
             viz.circle.Visible  = true
         end
+
         if viz.text then
-            viz.text.Position = Vector2.new(hSp.X, hSp.Y - 26)
-            viz.text.Text     = string.format("%s | str %.1f%s",
-                A.DesyncType or "off",
-                A.DesyncStrength or 0,
-                fl.isLagging and " | LAG" or "")
+            viz.text.Position = Vector2.new(headV2.X, headV2.Y - 28)
+            viz.text.Text = string.format("J:%s D:%s%s%s%s",
+                A.Jitter and (A.JitterMode or "?") or "off",
+                A.Desync and (A.DesyncMode or "?") or "off",
+                A.FakeLag and (" | LAG-" .. fl.phase) or "",
+                A.ResolverBypass and " | RB" or "",
+                A.Predictor and " | P" or "")
             viz.text.Visible = true
         end
     else
-        HideVisualizer()
+        HideViz()
     end
 end
 
 ----------------------------------------------------------------
--- 10. Main loops
+-- Main loops
 ----------------------------------------------------------------
 local function HeartbeatStep(dt)
     if not _G.Settings or not _G.Settings.AntiAim then return end
-    ApplyJitter()
-    ApplyDesync()
+    ApplyAngles()
+    ApplyBufferTeleport()
     ApplyHideHead()
     ApplyFakeLag(dt)
 end
@@ -449,30 +569,35 @@ pcall(function()
 end)
 
 ----------------------------------------------------------------
--- 11. CharacterAdded — сброс всех cached references
+-- CharacterAdded — полный сброс state
 ----------------------------------------------------------------
 table.insert(connections, LocalPlayer.CharacterAdded:Connect(function(char)
-    originalRootC0 = nil
-    originalNeckC0 = nil
+    originalRootC0  = nil
+    originalNeckC0  = nil
+    originalNeckC1  = nil
+    originalLowerC0 = nil
 
-    desyncAtt   = nil
-    desyncAlign = nil
-
-    fl.isLagging        = false
-    fl.accumulator      = 0
-    fl.bufferedCFrame   = nil
-    fl.originalAnchored = nil
-    fl.noclipApplied    = false
-    table.clear(fl.noclipCanCollideOriginal)
+    jitterRandWalk    = 0
+    jitterPatternIdx  = 1
+    jitterPatternTime = 0
 
     switchSide  = 1
     lastSwitchT = 0
+
+    bufferPhase  = 0
+    bufferOrigCF = nil
+    lastBufferT  = 0
+
+    fl.phase           = "release"
+    fl.accumulator     = 0
+    fl.bufferedCFrame  = nil
+    fl.pulseCount      = 0
 
     char:WaitForChild("HumanoidRootPart", 5)
 end))
 
 ----------------------------------------------------------------
--- 12. Disconnect — restore everything
+-- Disconnect — restore everything
 ----------------------------------------------------------------
 local function Disconnect()
     pcall(function() RunService:UnbindFromRenderStep(STEP_NAME_VIS) end)
@@ -481,30 +606,40 @@ local function Disconnect()
     end
     table.clear(connections)
 
-    -- Restore Motor6D originals
-    local char, _, root = GetCharRig()
+    local char, hum, root = GetCharRig()
+
+    -- Restore RootJoint.C0
     if root and originalRootC0 then
         local j = GetRootJoint(root)
         if j then pcall(function() j.C0 = originalRootC0 end) end
     end
+    -- Restore Neck.C0/C1
     if char and originalNeckC0 then
-        local neck = GetNeck(char)
-        if neck then pcall(function() neck.C0 = originalNeckC0 end) end
+        local n = GetNeck(char)
+        if n then pcall(function() n.C0 = originalNeckC0 end) end
+    end
+    if char and originalNeckC1 then
+        local n = GetNeck(char)
+        if n then pcall(function() n.C1 = originalNeckC1 end) end
+    end
+    -- Restore LowerTorso.Waist.C0
+    if char and originalLowerC0 then
+        local w = GetLowerJoint(char)
+        if w then pcall(function() w.C0 = originalLowerC0 end) end
     end
 
-    -- Stop active fake lag
-    if fl.isLagging then StopFakeLag() end
-    if fl.noclipApplied then ApplyFakeLagNoClip(false) end
+    -- Stop active fake lag (без Anchor — просто выйти из Physics state)
+    if fl.phase == "lag" and root and hum then
+        pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+    end
 
-    -- Destroy desync rig
-    DestroyDesyncRig()
+    DestroyViz()
 
-    -- Visualizer
-    DestroyVisualizer()
-
-    originalRootC0 = nil
-    originalNeckC0 = nil
+    originalRootC0  = nil
+    originalNeckC0  = nil
+    originalNeckC1  = nil
+    originalLowerC0 = nil
 end
 
 _G.ABYSS_AntiAim = { Disconnect = Disconnect }
-print("[ABYSS] AntiAim loaded — Jitter+Desync+HideHead+FakeLag+Visualizer")
+print("[ABYSS] AntiAim v4 ELITE loaded — Jitter+Desync(C0+Buffered)+HideHead+FakeLag(NoAnchor)+Visualizer")
