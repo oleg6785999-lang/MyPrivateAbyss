@@ -1,17 +1,10 @@
--- === ЗАМЕНИ ЭТОТ ФАЙЛ НА ПОЛНОСТЬЮ ===
--- FILENAME: Visuals.lua
 -- ============================================================
--- Visuals.lua — ABYSS ARCHON / Modular  (v4 ELITE)
--- ESP (Drawing API: Box / HealthBar / Snapline / Text labels)
--- + Chams (Highlight, DepthMode AlwaysOnTop, конфиг прозрачности)
---
--- Settings: _G.Settings.ESP
---   Existing: Enabled, Boxes, HealthBar, Snaplines, OnlyEnemies,
---             MaxDistance, Chams
---   v4 ELITE: ShowNames, ShowDistance, ShowHealth, TextSize,
---             TextFont, BoxThickness, SnaplineFromBottom,
---             ChamsOutline, ChamsFillTransparency,
---             ChamsOutlineTransparency, TeamColor
+-- Visuals.lua — ABYSS ARCHON (v4 ELITE + Audit-Fixed)
+--   Полный файл с интегрированными исправлениями:
+--     - Acquire проверяет живучесть объектов из пула
+--     - Все сеттеры Drawing обёрнуты в pcall/SafeSet
+--     - SetupText полностью защищён
+--     - Release чистит умершие объекты из пула
 -- ============================================================
 
 local Players    = game:GetService("Players")
@@ -44,7 +37,6 @@ E.ChamsOutlineTransparency = tonumber(E.ChamsOutlineTransparency) or 0.2
 E.TextFont                 = E.TextFont                           or "UI"
 _G.Settings.ESP = E
 
--- Drawing.Font enum: 0=UI, 1=System, 2=Plex, 3=Monospace
 local FONT_MAP = { UI = 0, System = 1, Plex = 2, Monospace = 3 }
 local function GetFontIdx() return FONT_MAP[E.TextFont] or 0 end
 
@@ -62,35 +54,115 @@ local C_OUT     = Color3.fromRGB(255, 255, 255)
 local C_TEXT    = Color3.fromRGB(255, 255, 255)
 local C_TEXT_OL = Color3.fromRGB(0, 0, 0)
 
--- Per-type Drawing pool
+-- Пулы и безопасность
 local DrawingPool = { Square = {}, Line = {}, Text = {}, Circle = {}, Quad = {}, Triangle = {} }
 local DrawingFree = setmetatable({}, { __mode = "k" })
+
+-- Проверка: жив ли Drawing-объект? (пробуем прочитать Visible)
+local function IsDrawingAlive(obj)
+    if not obj then return false end
+    local ok = pcall(function() return obj.Visible end)
+    return ok
+end
+
+-- Удалить объект из пула по ссылке
+local function RemoveFromPool(obj)
+    if not obj then return end
+    -- Чтение ClassName на мёртвом объекте может бросить ошибку
+    -- (executor C++ объект уничтожен) — оборачиваем в pcall.
+    local ok, class = pcall(function() return obj.ClassName end)
+    if ok and class and DrawingPool[class] then
+        local pool = DrawingPool[class]
+        for i = #pool, 1, -1 do
+            if pool[i] == obj then
+                table.remove(pool, i)
+                break
+            end
+        end
+    else
+        -- ClassName недоступен — fallback: ищем во всех пулах
+        for _, pool in pairs(DrawingPool) do
+            for i = #pool, 1, -1 do
+                if pool[i] == obj then
+                    table.remove(pool, i)
+                    break
+                end
+            end
+        end
+    end
+    DrawingFree[obj] = nil
+    pcall(function() obj:Remove() end)
+end
 
 local function Acquire(class)
     if not drawingAvailable then return nil end
     local pool = DrawingPool[class]
     if not pool then pool = {}; DrawingPool[class] = pool end
-    for i = 1, #pool do
+
+    -- ищем живой свободный объект
+    for i = #pool, 1, -1 do
         local obj = pool[i]
-        if DrawingFree[obj] then DrawingFree[obj] = false; return obj end
+        if DrawingFree[obj] then
+            if IsDrawingAlive(obj) then
+                DrawingFree[obj] = false
+                return obj
+            else
+                -- мёртвый — удаляем из пула
+                pcall(function() obj:Remove() end)
+                table.remove(pool, i)
+                DrawingFree[obj] = nil
+            end
+        end
     end
+
+    -- создаём новый
     local ok, d = pcall(Drawing.new, class)
     if not ok or not d then return nil end
-    table.insert(pool, d); DrawingFree[d] = false
+    table.insert(pool, d)
+    DrawingFree[d] = false
     return d
 end
 
 local function Release(obj)
     if not obj then return end
+    if not IsDrawingAlive(obj) then
+        RemoveFromPool(obj)
+        return
+    end
     pcall(function() obj.Visible = false end)
     DrawingFree[obj] = true
 end
 
+local function SafeSet(obj, key, value)
+    if not obj then return false end
+    local ok = pcall(function() obj[key] = value end)
+    if not ok then
+        -- объект умер, удаляем из пула
+        RemoveFromPool(obj)
+        return false
+    end
+    return true
+end
+
+-- Массовое задание свойств через SafeSet
+local function SafeConfigure(obj, props)
+    if not obj then return end
+    for k, v in pairs(props) do
+        if not SafeSet(obj, k, v) then
+            -- объект сдох при установке, не пытаемся дальше
+            break
+        end
+    end
+end
+
 local function NukePool()
     for _, pool in pairs(DrawingPool) do
-        for i = 1, #pool do pcall(function() pool[i]:Remove() end) end
+        for i = 1, #pool do
+            pcall(function() pool[i]:Remove() end)
+        end
         table.clear(pool)
     end
+    DrawingFree = setmetatable({}, { __mode = "k" })
 end
 
 -- Per-player ESP entries
@@ -140,19 +212,26 @@ local function GetColor(player, enemy)
     return enemy and C_ENEMY or C_TEAM
 end
 
+-- SetupText с полной защитой
 local function SetupText(text, str, position, color, size)
-    text.Text         = str
-    text.Position     = position
-    text.Color        = color
-    text.Size         = size
-    text.Outline      = true
-    text.OutlineColor = C_TEXT_OL
-    text.Center       = true
-    text.Visible      = true
-    pcall(function() text.Font = GetFontIdx() end)
+    if not text then return end
+    local success = true
+    success = success and SafeSet(text, "Text", str)
+    success = success and SafeSet(text, "Position", position)
+    success = success and SafeSet(text, "Color", color)
+    success = success and SafeSet(text, "Size", size)
+    success = success and SafeSet(text, "Outline", true)
+    success = success and SafeSet(text, "OutlineColor", C_TEXT_OL)
+    success = success and SafeSet(text, "Center", true)
+    success = success and SafeSet(text, "Visible", true)
+    pcall(function() text.Font = GetFontIdx() end)  -- это может упасть, pcall оставлен
+    if not success then
+        -- если одно из свойств не применилось, объект мёртв, убираем из пула
+        RemoveFromPool(text)
+    end
 end
 
--- Lifecycle (event-based)
+-- Lifecycle
 local connections = {}
 
 local function HookCharRemoving(plr)
@@ -186,7 +265,6 @@ local function step()
     cleanedOnDisable = false
     if not Camera then return end
 
-    -- per-frame cached scalars (минимум аллокаций внутри per-player loop)
     local viewport = Camera.ViewportSize
     local camPos   = Camera.CFrame.Position
     local snapBase
@@ -247,39 +325,55 @@ local function step()
 
         -- Box
         if cfg.Boxes then
-            e.box = e.box or Acquire("Square")
-            if e.box then
-                local b = e.box
-                b.Filled    = false
-                b.Color     = color
-                b.Thickness = boxThk
-                b.Size      = Vector2.new(width, height)
-                b.Position  = Vector2.new(x, y)
-                b.Visible   = true
+            if not e.box or not IsDrawingAlive(e.box) then
+                if e.box then Release(e.box) end
+                e.box = Acquire("Square")
             end
-        elseif e.box then Release(e.box); e.box = nil end
+            if e.box then
+                SafeConfigure(e.box, {
+                    Filled    = false,
+                    Color     = color,
+                    Thickness = boxThk,
+                    Size      = Vector2.new(width, height),
+                    Position  = Vector2.new(x, y),
+                    Visible   = true
+                })
+            end
+        elseif e.box then
+            Release(e.box); e.box = nil
+        end
 
-        -- HealthBar (vertical, слева от box)
+        -- HealthBar
         if cfg.HealthBar and hum.MaxHealth > 0 then
-            e.hpBg   = e.hpBg   or Acquire("Square")
-            e.hpFill = e.hpFill or Acquire("Square")
+            if not e.hpBg or not IsDrawingAlive(e.hpBg) then
+                if e.hpBg then Release(e.hpBg) end
+                e.hpBg = Acquire("Square")
+            end
+            if not e.hpFill or not IsDrawingAlive(e.hpFill) then
+                if e.hpFill then Release(e.hpFill) end
+                e.hpFill = Acquire("Square")
+            end
             local pct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
             if e.hpBg then
-                e.hpBg.Filled    = true
-                e.hpBg.Color     = C_HP_BG
-                e.hpBg.Thickness = 1
-                e.hpBg.Size      = Vector2.new(3, height)
-                e.hpBg.Position  = Vector2.new(x - 5, y)
-                e.hpBg.Visible   = true
+                SafeConfigure(e.hpBg, {
+                    Filled    = true,
+                    Color     = C_HP_BG,
+                    Thickness = 1,
+                    Size      = Vector2.new(3, height),
+                    Position  = Vector2.new(x - 5, y),
+                    Visible   = true
+                })
             end
             if e.hpFill then
                 local barH = height * pct
-                e.hpFill.Filled    = true
-                e.hpFill.Thickness = 1
-                e.hpFill.Color     = C_HP_OK:Lerp(C_HP_LO, 1 - pct)
-                e.hpFill.Size      = Vector2.new(3, barH)
-                e.hpFill.Position  = Vector2.new(x - 5, y + (height - barH))
-                e.hpFill.Visible   = true
+                SafeConfigure(e.hpFill, {
+                    Filled    = true,
+                    Thickness = 1,
+                    Color     = C_HP_OK:Lerp(C_HP_LO, 1 - pct),
+                    Size      = Vector2.new(3, barH),
+                    Position  = Vector2.new(x - 5, y + (height - barH)),
+                    Visible   = true
+                })
             end
         else
             if e.hpBg   then Release(e.hpBg);   e.hpBg = nil end
@@ -288,40 +382,58 @@ local function step()
 
         -- Snapline
         if cfg.Snaplines then
-            e.snapline = e.snapline or Acquire("Line")
-            if e.snapline then
-                local l = e.snapline
-                l.Color     = color
-                l.Thickness = 1
-                l.From      = snapBase
-                l.To        = Vector2.new(headSp.X, headSp.Y)
-                l.Visible   = true
+            if not e.snapline or not IsDrawingAlive(e.snapline) then
+                if e.snapline then Release(e.snapline) end
+                e.snapline = Acquire("Line")
             end
-        elseif e.snapline then Release(e.snapline); e.snapline = nil end
+            if e.snapline then
+                SafeConfigure(e.snapline, {
+                    Color     = color,
+                    Thickness = 1,
+                    From      = snapBase,
+                    To        = Vector2.new(headSp.X, headSp.Y),
+                    Visible   = true
+                })
+            end
+        elseif e.snapline then
+            Release(e.snapline); e.snapline = nil
+        end
 
-        -- Text labels (имя над боксом, дист/HP — под)
+        -- Text labels
         local labelY = y - textSize - 2
         local botY   = y + height + 2
 
         if cfg.ShowNames then
-            e.nameText = e.nameText or Acquire("Text")
+            if not e.nameText or not IsDrawingAlive(e.nameText) then
+                if e.nameText then Release(e.nameText) end
+                e.nameText = Acquire("Text")
+            end
             if e.nameText then
                 local nm = (plr.DisplayName ~= "" and plr.DisplayName) or plr.Name
-                SetupText(e.nameText, nm,
-                          Vector2.new(headSp.X, labelY), color, textSize)
+                SetupText(e.nameText, nm, Vector2.new(headSp.X, labelY), color, textSize)
             end
-        elseif e.nameText then Release(e.nameText); e.nameText = nil end
+        elseif e.nameText then
+            Release(e.nameText); e.nameText = nil
+        end
 
         if cfg.ShowDistance then
-            e.distText = e.distText or Acquire("Text")
+            if not e.distText or not IsDrawingAlive(e.distText) then
+                if e.distText then Release(e.distText) end
+                e.distText = Acquire("Text")
+            end
             if e.distText then
                 SetupText(e.distText, string.format("%dm", math.floor(dist)),
                           Vector2.new(headSp.X, botY), C_TEXT, textSize)
             end
-        elseif e.distText then Release(e.distText); e.distText = nil end
+        elseif e.distText then
+            Release(e.distText); e.distText = nil
+        end
 
         if cfg.ShowHealth and hum.MaxHealth > 0 then
-            e.hpText = e.hpText or Acquire("Text")
+            if not e.hpText or not IsDrawingAlive(e.hpText) then
+                if e.hpText then Release(e.hpText) end
+                e.hpText = Acquire("Text")
+            end
             if e.hpText then
                 local hpY = cfg.ShowDistance and (botY + textSize + 1) or botY
                 local pct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
@@ -329,7 +441,9 @@ local function step()
                 SetupText(e.hpText, string.format("%d HP", math.floor(hum.Health)),
                           Vector2.new(headSp.X, hpY), hpColor, textSize)
             end
-        elseif e.hpText then Release(e.hpText); e.hpText = nil end
+        elseif e.hpText then
+            Release(e.hpText); e.hpText = nil
+        end
 
         -- Chams (Highlight)
         if cfg.Chams then
@@ -339,21 +453,28 @@ local function step()
                 e.highlight = nil; hl = nil
             end
             if not hl then
-                local h = Instance.new("Highlight")
-                h.Name                = "ABYSS_HL"
-                h.FillColor           = color
-                h.OutlineColor        = cfg.ChamsOutline and C_OUT or color
-                h.FillTransparency    = fillT
-                h.OutlineTransparency = outlT
-                pcall(function() h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop end)
-                h.Adornee = char
-                h.Parent  = char
-                e.highlight = h
+                local ok, h = pcall(function()
+                    local hh = Instance.new("Highlight")
+                    hh.Name = "ABYSS_HL"
+                    hh.FillColor = color
+                    hh.OutlineColor = cfg.ChamsOutline and C_OUT or color
+                    hh.FillTransparency = fillT
+                    hh.OutlineTransparency = outlT
+                    pcall(function() hh.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop end)
+                    hh.Adornee = char
+                    hh.Parent = char
+                    return hh
+                end)
+                if ok and h then
+                    e.highlight = h
+                end
             else
-                hl.FillColor           = color
-                hl.OutlineColor        = cfg.ChamsOutline and C_OUT or color
-                hl.FillTransparency    = fillT
-                hl.OutlineTransparency = outlT
+                pcall(function()
+                    hl.FillColor = color
+                    hl.OutlineColor = cfg.ChamsOutline and C_OUT or color
+                    hl.FillTransparency = fillT
+                    hl.OutlineTransparency = outlT
+                end)
             end
         elseif e.highlight then
             pcall(function() e.highlight:Destroy() end)
@@ -366,7 +487,7 @@ pcall(function()
     RunService:BindToRenderStep(STEP_NAME, Enum.RenderPriority.Camera.Value + 2, step)
 end)
 
--- Disconnect (мгновенная очистка)
+-- Disconnect
 local function Disconnect()
     pcall(function() RunService:UnbindFromRenderStep(STEP_NAME) end)
     for _, c in ipairs(connections) do
@@ -378,4 +499,4 @@ local function Disconnect()
 end
 
 _G.ABYSS_Visuals = { Disconnect = Disconnect }
-print("[ABYSS] Visuals v4 ELITE loaded — Boxes+HP+Snap+Text+Chams")
+print("[ABYSS] Visuals v4 ELITE loaded — Boxes+HP+Snap+Text+Chams (audit-fixed)")
