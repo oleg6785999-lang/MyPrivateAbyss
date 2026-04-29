@@ -68,6 +68,9 @@ if _G.Settings.NoClip  == nil then _G.Settings.NoClip  = false end
 local LocalPlayer = Players.LocalPlayer
 local connections = {}
 
+-- Кэш os.clock (FIX #2: tick() устарел и нестабилен в некоторых условиях)
+local osClock = os.clock
+
 -- Кэши
 local lastNoClip          = nil
 local lastNoClipMode      = nil
@@ -90,6 +93,7 @@ local fly = {
     targetAlpha  = 0,
     inputVel     = Vector3.zero,
     lastVelocity = Vector3.zero,
+    captured     = false,  -- FIX #5: флаг "lastVelocity захвачен в этой сессии"
 }
 
 local function GetCharRig()
@@ -238,28 +242,30 @@ end
 -- ============================================================
 -- Spinbot
 -- ============================================================
-local function ApplySpinbot(root)
-    if not root then return end
+-- FIX #1: Spinbot теперь использует dt — SpinSpeed интерпретируется как
+-- градусы/сек (раньше был "за кадр", FPS-зависимая аномалия).
+local function ApplySpinbot(root, dt)
+    if not root or not dt then return end
     local A = _G.Settings.AntiAim
     if A and A.Desync then return end  -- conflict guard
     if not (R and R.Spinbot) then return end
 
-    local rad = math.rad(R.SpinSpeed or 25)
+    local angle = math.rad(R.SpinSpeed or 25) * dt
     local mode = R.SpinMode or "Yaw"
     local rot
     if mode == "Yaw" then
-        rot = CFrame.Angles(0, rad, 0)
+        rot = CFrame.Angles(0, angle, 0)
     elseif mode == "Pitch" then
-        rot = CFrame.Angles(rad, 0, 0)
+        rot = CFrame.Angles(angle, 0, 0)
     elseif mode == "Roll" then
-        rot = CFrame.Angles(0, 0, rad)
+        rot = CFrame.Angles(0, 0, angle)
     elseif mode == "Random" then
         local axis = math.random(1, 3)
-        rot = (axis == 1) and CFrame.Angles(0, rad, 0)
-              or (axis == 2) and CFrame.Angles(rad, 0, 0)
-              or CFrame.Angles(0, 0, rad)
+        rot = (axis == 1) and CFrame.Angles(0, angle, 0)
+              or (axis == 2) and CFrame.Angles(angle, 0, 0)
+              or CFrame.Angles(0, 0, angle)
     else
-        rot = CFrame.Angles(0, rad, 0)
+        rot = CFrame.Angles(0, angle, 0)
     end
     root.CFrame = root.CFrame * rot
 end
@@ -302,41 +308,55 @@ local function Heartbeat(dt)
         hum.WalkSpeed = originalWalkSpeed
     end
 
-    -- Velocity multiplier (без compounding — replace, не multiply per-frame)
+    -- FIX #4: VelocityMultiplier — плавный Lerp вместо мгновенной замены.
+    -- Раньше горизонтальная скорость прыгала к target за 1 кадр → рывки + детект.
+    -- Теперь интерполируем с smoothness (берём M.FlySmoothness или дефолт 8).
     if M.VelocityMultiplier and M.VelocityMultiplier > 1 then
         local moveDir = hum.MoveDirection
         if moveDir.Magnitude > 0.1 then
             local v = root.AssemblyLinearVelocity
             local target = moveDir * (hum.WalkSpeed * M.VelocityMultiplier)
+
+            -- Интерполяция горизонтальной составляющей (Y оставляем как есть)
+            local smoothness = M.FlySmoothness or 8
+            local k = math.min(dt * smoothness, 1)
+            local curH    = Vector3.new(v.X, 0, v.Z)
+            local tgtH    = Vector3.new(target.X, 0, target.Z)
+            local smoothH = curH:Lerp(tgtH, k)
+
+            -- Cap применяем уже к сглаженной скорости
             local cap = M.VelocityCap or 200
-            if target.Magnitude > cap then target = target.Unit * cap end
-            root.AssemblyLinearVelocity = Vector3.new(target.X, v.Y, target.Z)
+            if smoothH.Magnitude > cap then smoothH = smoothH.Unit * cap end
+
+            root.AssemblyLinearVelocity = Vector3.new(smoothH.X, v.Y, smoothH.Z)
         end
     end
 
-    -- InfJump (cooldown + optional vertical boost)
+    -- InfJump (FIX #2: tick() → os.clock())
     if _G.Settings.InfJump and UserInputService:IsKeyDown(Enum.KeyCode.Space)
-       and tick() - lastJumpTime > (M.InfJumpCooldown or 0.22) then
+       and osClock() - lastJumpTime > (M.InfJumpCooldown or 0.22) then
         hum:ChangeState(Enum.HumanoidStateType.Jumping)
         if (M.InfJumpVelocityBoost or 0) > 0 then
             local v = root.AssemblyLinearVelocity
             root.AssemblyLinearVelocity = Vector3.new(v.X, v.Y + M.InfJumpVelocityBoost, v.Z)
         end
-        lastJumpTime = tick()
+        lastJumpTime = osClock()
     end
 
-    -- Bhop (continuous jump while space held, ground state only)
-    if M.BhopEnabled and UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+    -- Bhop (FIX #3: убран RunningNoPhysics — нестабильный enum;
+    -- + проверка что не сфокусировано текстовое поле, чтобы не прыгать в чате)
+    if M.BhopEnabled
+       and UserInputService:IsKeyDown(Enum.KeyCode.Space)
+       and not UserInputService:GetFocusedTextBox() then
         local s = hum:GetState()
         if s == Enum.HumanoidStateType.Landed
-           or s == Enum.HumanoidStateType.Running
-           or s == Enum.HumanoidStateType.RunningNoPhysics then
+           or s == Enum.HumanoidStateType.Running then
             hum:ChangeState(Enum.HumanoidStateType.Jumping)
         end
     end
 
-    -- Spinbot
-    ApplySpinbot(root)
+    -- Spinbot (FIX #1: передаём dt)
+    ApplySpinbot(root, dt)
 
     -- Fly lifecycle
     local flyOn = F.Enabled
@@ -345,21 +365,32 @@ local function Heartbeat(dt)
             CreateFly()
         end
         fly.targetAlpha = 1
+        -- сбрасываем флаг захвата при включении полёта
+        fly.captured = false
     else
-        fly.targetAlpha = 0
-        if fly.fadeAlpha < 0.01 and fly.enabled then
-            -- Velocity preservation: сохраняем скорость, переносим на root
-            if F.VelocityPreservation and fly.linearVel and fly.linearVel.Parent then
-                fly.lastVelocity = fly.linearVel.VectorVelocity
+        -- FIX #5: захват lastVelocity ОДИН РАЗ в момент перехода targetAlpha→0,
+        -- ДО того как затухание сделает VectorVelocity ≈ 0.
+        if fly.targetAlpha ~= 0 and fly.enabled and F.VelocityPreservation
+           and fly.linearVel and fly.linearVel.Parent then
+            local snap = fly.linearVel.VectorVelocity
+            if snap.Magnitude > 0.5 then
+                fly.lastVelocity = snap
+                fly.captured = true
             end
+        end
+        fly.targetAlpha = 0
+
+        if fly.fadeAlpha < 0.01 and fly.enabled then
             DestroyFly()
-            if F.VelocityPreservation and fly.lastVelocity.Magnitude > 0.5 then
+            if F.VelocityPreservation and fly.captured
+               and fly.lastVelocity.Magnitude > 0.5 then
                 local cap = M.VelocityCap or 200
                 local v = fly.lastVelocity
                 if v.Magnitude > cap then v = v.Unit * cap end
                 pcall(function() root.AssemblyLinearVelocity = v end)
-                fly.lastVelocity = Vector3.zero
             end
+            fly.lastVelocity = Vector3.zero
+            fly.captured = false
         end
     end
 
@@ -408,6 +439,7 @@ table.insert(connections, LocalPlayer.CharacterAdded:Connect(function(char)
     fly.attachment, fly.linearVel, fly.align = nil, nil, nil
     fly.enabled, fly.fadeAlpha, fly.targetAlpha = false, 0, 0
     fly.inputVel, fly.lastVelocity = Vector3.zero, Vector3.zero
+    fly.captured = false
 
     table.clear(originalCanCollide)
     ClearAdvancedNoClip()
@@ -423,9 +455,15 @@ table.insert(connections, LocalPlayer.CharacterAdded:Connect(function(char)
 end))
 
 -- Чужие игроки → respawn → пересобрать hitbox expander
+-- FIX #6: задержка увеличена 0.2 → 0.5 секунды.
+-- Раньше при 0.2с части персонажа ещё не успевали полностью загрузиться
+-- (Head/Torso могли отсутствовать), и ApplyHitbox в следующем Heartbeat
+-- молча пропускал нового игрока.
+local HITBOX_RESPAWN_DELAY = 0.5
+
 table.insert(connections, Players.PlayerAdded:Connect(function(plr)
     plr.CharacterAdded:Connect(function()
-        task.wait(0.2)
+        task.wait(HITBOX_RESPAWN_DELAY)
         lastHitboxEnabled = nil
         lastHitboxSize    = nil
         lastHitboxTrMode  = nil
@@ -434,7 +472,7 @@ end))
 for _, plr in ipairs(Players:GetPlayers()) do
     if plr ~= LocalPlayer then
         plr.CharacterAdded:Connect(function()
-            task.wait(0.2)
+            task.wait(HITBOX_RESPAWN_DELAY)
             lastHitboxEnabled = nil
             lastHitboxSize    = nil
             lastHitboxTrMode  = nil
