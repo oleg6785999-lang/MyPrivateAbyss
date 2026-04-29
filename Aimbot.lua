@@ -1,17 +1,10 @@
--- === ЗАМЕНИ ЭТОТ ФАЙЛ НА ПОЛНОСТЬЮ ===
--- FILENAME: Aimbot.lua
 -- ============================================================
--- Aimbot.lua — ABYSS ARCHON / Modular  (v5 ELITE)
---   Visible (Camera.CFrame) + Silent (__namecall hook), независимо.
---   v5 улучшения:
---    + Backtrack (ring buffer recent positions, choose visible)
---    + Target Hysteresis (smooth target switching, no jitter)
---    + MinShotDelay (humanizer rate-limit)
---    + MaxFovDeltaPerFrame (clamp angular change, no visual snap)
---    + Cached locals (mathRandom, Vector3New, etc) — micro-perf
---    + Stale velocity reset (>2sec) + clamp 500 studs/sec
---    + Iterative 2-pass prediction + bullet velocity + gravity
---   Settings: _G.Settings.Aimbot (defensive merge с Main.lua)
+-- Aimbot.lua — ABYSS ARCHON (v5 ELITE + Audit-Fixed)
+--   Полный файл с интегрированными патчами:
+--     [FIX #1] CFrame.lookAt → safe fallback на CFrame.new
+--     [FIX #2] newcclosure обёрнут в pcall + fallback raw function
+--     [FIX #3] origNamecall nil-check перед установкой hook
+--     [FIX #6] silentTS trim ВСЕГДА (устранение утечки)
 -- ============================================================
 
 local Players          = game:GetService("Players")
@@ -60,7 +53,11 @@ local mathMax       = math.max
 local mathAcos      = math.acos
 local Vector3New    = Vector3.new
 local Vector2New    = Vector2.new
-local CFrameLookAt  = CFrame.lookAt
+
+-- FIX #1: CFrame.lookAt отсутствует в стандартном Roblox → fallback
+local CFrameNew     = CFrame.new
+local CFrameLookAt  = CFrame.lookAt or function(at, target) return CFrameNew(at, target) end
+
 local osClock       = os.clock
 local tableInsert   = table.insert
 local tableRemove   = table.remove
@@ -290,7 +287,7 @@ end
 local function AimAt(position, dt)
     if not position or not Camera then return end
     local cam     = Camera.CFrame
-    local desired = CFrameLookAt(cam.Position, position)
+    local desired = CFrameLookAt(cam.Position, position)  -- теперь безопасен
     local sm      = mathMax(tonumber(S.Smoothing) or 3, 0.001)
     local sens    = mathMax(tonumber(S.Sensitivity) or 1, 0.01)
     local alpha   = (1 - mathExp(-(dt or 1/60) * (60 / sm))) * sens
@@ -405,15 +402,16 @@ local function getValidTarget()
     return t
 end
 
--- Sliding 1-sec rate limiter
+-- Sliding 1-sec rate limiter (FIX #6 trim always)
 local silentTS = {}
 local function rateLimitOk()
-    local cap = tonumber(S.MaxSilentPerSec) or 0
-    if cap <= 0 then return true end
     local now = osClock()
+    -- всегда чистим просроченные записи, чтобы массив не рос бесконечно
     while #silentTS > 0 and (now - silentTS[1]) > 1 do
         tableRemove(silentTS, 1)
     end
+    local cap = tonumber(S.MaxSilentPerSec) or 0
+    if cap <= 0 then return true end
     if #silentTS >= cap then return false end
     tableInsert(silentTS, now)
     return true
@@ -450,7 +448,7 @@ local function applyMissOffset(pos)
     return pos + rnd.Unit * r
 end
 
--- Silent hook
+-- Silent hook (FIX #2 + #3: newcclosure fallback + nil-check)
 local hookInstalled, origNamecall, mt = false, nil, nil
 
 local function HookBody(self, ...)
@@ -524,11 +522,33 @@ local function InstallHook()
        or type(newcclosure) ~= "function" or type(getnamecallmethod) ~= "function" then
         warn("[ABYSS] Silent Aim: exec не поддерживает namecall hook"); return
     end
+
     local ok, gmt = pcall(getrawmetatable, game)
-    if not ok or not gmt then return end
-    mt = gmt; origNamecall = mt.__namecall
+    if not ok or not gmt then
+        warn("[ABYSS] Silent Aim: getrawmetatable failed: " .. tostring(gmt)); return
+    end
+
+    -- FIX #3: проверка origNamecall
+    local origCandidate = gmt.__namecall
+    if type(origCandidate) ~= "function" then
+        warn("[ABYSS] Silent Aim: mt.__namecall is " .. typeof(origCandidate) .. " (expected function); abort hook")
+        return
+    end
+
+    -- FIX #2: newcclosure обёрнут в pcall + fallback на raw HookBody
+    local cclosOk, cclosResult = pcall(newcclosure, HookBody)
+    local hookFn
+    if cclosOk and type(cclosResult) == "function" then
+        hookFn = cclosResult
+    else
+        warn("[ABYSS] newcclosure failed (" .. tostring(cclosResult) .. "), using raw function")
+        hookFn = HookBody
+    end
+
+    mt = gmt
+    origNamecall = origCandidate
     pcall(setreadonly, mt, false)
-    mt.__namecall = newcclosure(HookBody)
+    mt.__namecall = hookFn
     pcall(setreadonly, mt, true)
     hookInstalled = true
 end
