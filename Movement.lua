@@ -10,7 +10,7 @@
 --   InfJump   : VelocityBoost + AntiSpam cooldown
 --   Spinbot   : Yaw / Pitch / Roll / Random; off если AntiAim.Desync
 --   Bhop      : continuous-jump while Space held
---   Все включения через change-detection (без операций каждый Heartbeat).
+--   Все включения через change-detection (без операций каждый Heartbeat).  
 -- ============================================================
 
 local Players          = game:GetService("Players")
